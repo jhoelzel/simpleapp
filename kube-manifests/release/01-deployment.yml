@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: simpleapp
+  name: simpleapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simpleapp
+      version: 0.0.1
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: simpleapp
+        version: 0.0.1
+    spec:
+      containers:
+      - image: simpleapp:0.0.1
+        name: simpleapp
+        imagePullPolicy: Never
+        ports:
+          - containerPort: 80
+        env:
+          - name: BUILD_VERSION
+            value: 0.0.1
+          - name: BUILD_TIME
+            value: 2021-09-24_17:25:49
+          - name: BUILD_IMAGE
+            value: simpleapp:0.0.1
