@@ -11,7 +11,8 @@ BUILD_TIME?=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 TIMEZONE="Europe/Berlin"
 GOOS?=linux
 GOARCH?=amd64
-PORT=80
+PORT?=80
+NS?=default
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -54,7 +55,7 @@ vet: ## Run go vet against code.
 test: fmt vet ## Run tests.
 	 go test ./...
 
-run: fmt vet ## Run tests.
+run: fmt vet ## Run.
 	 go run ./cmd/${NAME}.go
 
 commithistory: ## create the commithistory in a nice format
@@ -93,12 +94,17 @@ kube-manifests: kube-clean ## generated the kubernetes manifests and replaces va
 kube-clean: ## removes release manifests
 	rm -f ./kube-manifests/release/*.yml 
 
-
 kube-apply: ## apply kube manifests
-	kubectl apply -f kube-manifests/release
+	kubectl apply -f kube-manifests/release -n ${NS}
 
 kube-remove: ## remove kube manifests
-	kubectl delete -f kube-manifests/release
+	kubectl delete -f kube-manifests/release -n ${NS}
+
+kube-ns: ## create desired namespace
+	kubectl create namespace ${NS}
+
+kube-removens: ## remove the desired namespace
+	kubectl delete namespace ${NS}
 
 kube-renew: build docker-build kube-remove kube-apply ## build, docker-build, remove existing deployment, deploy
 

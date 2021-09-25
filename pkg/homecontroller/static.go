@@ -7,7 +7,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-//ServeStatic is responsible for serving static files
+//serveStatic is responsible for serving static files
 func serveStatic(router *mux.Router, staticDirectory string) {
 	staticPaths := getStaticPaths(staticDirectory)
 	for pathName, pathValue := range staticPaths {
@@ -16,7 +16,7 @@ func serveStatic(router *mux.Router, staticDirectory string) {
 			http.FileServer(http.Dir(pathValue))))
 	}
 }
-
+//getStaticPaths is responsible for defining static paths
 func getStaticPaths(staticDirectory string) map[string]string {
 	staticPaths := map[string]string{
 		"static": staticDirectory,
