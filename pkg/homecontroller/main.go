@@ -7,4 +7,7 @@ import (
 
 func RegisterSubRouter(r *mux.Router) {
 	r.HandleFunc("/", homeEndpoint).Methods("GET")
+	//static file handling
+	serveStatic(r, "/static/")
+
 }
