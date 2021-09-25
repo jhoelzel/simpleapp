@@ -37,3 +37,16 @@ spec:
             limits:
               cpu: "50m"
               memory: "50Mi"
+        livenessProbe:
+          httpGet:
+            path: /status/healthz
+            port: 8080
+          initialDelaySeconds: 3
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /status/readyz
+            port: 8080
+
+          initialDelaySeconds: 3
+          periodSeconds: 3
