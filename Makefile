@@ -8,6 +8,7 @@ IMAGE_NAME=${NAME}:${VERSION}
 IMAGE_NAME_LATEST=${NAME}:latest
 COMMIT?=$(shell git rev-parse --short HEAD)
 BUILD_TIME?=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
+TIMEZONE="Europe/Berlin"
 GOOS?=linux
 GOARCH?=amd64
 PORT=80
@@ -64,14 +65,14 @@ commithistory: ## create the commithistory in a nice format
 clean: ## remove previous binaries
 	rm -f bin/${NAME}
 
-build: clean ## build a version of the app
+build: clean ## build a version of the app, pass Buildversion, Comit and projectname as build arguments
 	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build \
 		-ldflags "-s -w -X ${PROJECTNAME}/pkg/version.Release=${VERSION} \
 		-X ${PROJECTNAME}/pkg/version.Commit=${COMMIT} -X ${PROJECTNAME}/pkg/version.BuildTime=${BUILD_TIME}" \
 		-o bin/${NAME} ./cmd/${NAME}.go
 
-docker-build: build ## Build the docker image and tag it
-	sudo docker build -t ${IMAGE_NAME} -t ${IMAGE_NAME_LATEST} . -f ./dockerfiles/Dockerfile
+docker-build: build ## Build the docker image and tag it with the current version and :latest
+	sudo docker build -t ${IMAGE_NAME} -t ${IMAGE_NAME_LATEST} --build-arg tz=${TIMEZONE} . -f ./dockerfiles/Dockerfile
 
 docker-run: docker-build ## Build the docker image and tag it and run it in docker
 	sudo docker stop $(NAME):$(VERSION) || true && sudo docker rm $(NAME):$(VERSION) || true
@@ -99,5 +100,5 @@ kube-apply: ## apply kube manifests
 kube-remove: ## remove kube manifests
 	kubectl delete -f kube-manifests/release
 
-kube-renew: build docker-build kube-remove kube-apply ## build, docker-build, 
+kube-renew: build docker-build kube-remove kube-apply ## build, docker-build, remove existing deployment, deploy
 

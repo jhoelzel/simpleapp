@@ -12,6 +12,7 @@ func Get(buildTime, commit, release string) *mux.Router {
 	r := mux.NewRouter()
 	homecontroller.RegisterSubRouter(r)
 	statuscontroller.RegisterSubRouter(r)
+	r.Use(logMiddleware)
 
 	return r
 }

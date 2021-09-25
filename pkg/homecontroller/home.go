@@ -9,7 +9,7 @@ import (
 	"github.com/jhoelzel/simpleapp/pkg/version"
 )
 
-//Home returns a simple HTTP handler function which writes a response.
+//Home returns a simple HTTP handler function which writes a response containing current build info
 func homeEndpoint(w http.ResponseWriter, r *http.Request) {
 	info := struct {
 		BuildTime string `json:"buildTime"`
@@ -18,8 +18,8 @@ func homeEndpoint(w http.ResponseWriter, r *http.Request) {
 	}{
 		version.BuildTime, version.Commit, version.Release,
 	}
-
-	body, err := json.Marshal(info)
+	// we use MarschalIndent because we want it to look pretty
+	body, err := json.MarshalIndent(info, "", "  ")
 	if err != nil {
 		log.Printf("Could not json.Marshal info data: %v", err)
 		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)

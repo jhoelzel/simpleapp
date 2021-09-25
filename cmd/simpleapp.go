@@ -21,8 +21,11 @@ func main() {
 	router := router.Get(version.BuildTime, version.Commit, version.Release)
 
 	srv := &http.Server{
-		Addr:    ":80",
-		Handler: router,
+		Addr:         ":80",
+		WriteTimeout: time.Second * 15,
+		ReadTimeout:  time.Second * 15,
+		IdleTimeout:  time.Second * 60,
+		Handler:      router,
 	}
 
 	done := make(chan os.Signal, 1)

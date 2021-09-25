@@ -30,3 +30,10 @@ spec:
             value: {{.BUILD_TIME}}
           - name: BUILD_IMAGE
             value: {{.IMAGE_NAME}}
+        resources:
+            requests:
+              cpu: "15m"
+              memory: "15Mi"
+            limits:
+              cpu: "50m"
+              memory: "50Mi"

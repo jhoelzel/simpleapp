@@ -1,5 +1,5 @@
 #Simpleapp
-Simpleapp is a simple app that defines a basic kubernetes app i use in my trainings
+Simpleapp is a simple app that defines a basic kubernetes app i use in my trainings.
 
 It Contains:
 - Gracefull shutdown
