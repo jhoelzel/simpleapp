@@ -18,11 +18,11 @@ spec:
         version: 0.0.1
     spec:
       containers:
-      - image: simpleapp:0.0.1
+      - image: microk8s:32000/simpleapp:latest
         name: simpleapp
-        imagePullPolicy: Never
         ports:
-          - containerPort: 80
+          - name: http
+            containerPort: 8080
         env:
           - name: BUILD_VERSION
             value: 0.0.1

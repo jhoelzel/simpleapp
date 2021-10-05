@@ -3,6 +3,7 @@
 VERSION ?= 0.0.1
 NAME = $(shell basename "`pwd`")
 GITBASEURL = github.com/jhoelzel
+CONTAINER_REPOSITORY=microk8s:32000
 PROJECTNAME = $(addprefix ${GITBASEURL}/,${NAME})
 IMAGE_NAME=${NAME}:${VERSION}
 IMAGE_NAME_LATEST=${NAME}:latest
@@ -80,6 +81,12 @@ docker-run: docker-build ## Build the docker image and tag it and run it in dock
 	sudo docker run --name ${NAME} -p ${PORT}:${PORT} --rm \
 		-e "PORT=${PORT}" \
 		$(NAME):$(VERSION)
+
+docker-push: ##push your image to the docker hub
+	sudo docker tag ${IMAGE_NAME} ${CONTAINER_REPOSITORY}/${IMAGE_NAME}
+	sudo docker tag ${IMAGE_NAME_LATEST} ${CONTAINER_REPOSITORY}/${IMAGE_NAME_LATEST}
+	sudo docker push  ${CONTAINER_REPOSITORY}/${IMAGE_NAME}
+	sudo docker push  ${CONTAINER_REPOSITORY}/${IMAGE_NAME_LATEST}
 
 ##@ Kubernetes
 
