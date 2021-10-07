@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{.APP_NAME}}-loadbalancer-service
+  labels:
+    app: {{.APP_NAME}}
+    version: {{.VERSION}}
+spec:
+  type: LoadBalancer
+  selector:
+    app: {{.APP_NAME}}
+    version: {{.VERSION}}
+  ports:
+  - port: 80
+    targetPort: 8080

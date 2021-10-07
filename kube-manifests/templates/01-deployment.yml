@@ -12,17 +12,16 @@ spec:
       version: {{.VERSION}}
   template:
     metadata:
-      creationTimestamp: null
       labels:
         app: {{.APP_NAME}}
         version: {{.VERSION}}
     spec:
       containers:
-      - image: {{.IMAGE_NAME}}
+      - image: {{.CONTAINER_REPOSITORY}}/{{.IMAGE_NAME}}
         name: {{.APP_NAME}}
-        imagePullPolicy: Never
         ports:
-          - containerPort: 80
+          - name: http
+            containerPort: 8080
         env:
           - name: BUILD_VERSION
             value: {{.VERSION}}

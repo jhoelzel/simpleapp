@@ -77,10 +77,10 @@ docker-build: build ## Build the docker image and tag it with the current versio
 	sudo docker build -t ${IMAGE_NAME} -t ${IMAGE_NAME_LATEST} --build-arg tz=${TIMEZONE} . -f ./dockerfiles/Dockerfile
 
 docker-run: docker-build ## Build the docker image and tag it and run it in docker
-	sudo docker stop $(NAME):$(VERSION) || true && sudo docker rm $(NAME):$(VERSION) || true
+	sudo docker stop $(IMAGE_NAME) || true && sudo docker rm $(IMAGE_NAME) || true
 	sudo docker run --name ${NAME} -p ${PORT}:${PORT} --rm \
 		-e "PORT=${PORT}" \
-		$(NAME):$(VERSION)
+		$(IMAGE_NAME)
 
 docker-push: ##push your image to the docker hub
 	sudo docker tag ${IMAGE_NAME} ${CONTAINER_REPOSITORY}/${IMAGE_NAME}
@@ -97,6 +97,7 @@ kube-manifests: kube-clean ## generated the kubernetes manifests and replaces va
 	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 1 -exec sed -i 's/{{.VERSION}}/$(VERSION)/g' {} \;
 	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 1 -exec sed -i 's/{{.BUILD_TIME}}/$(BUILD_TIME)/g' {} \;
 	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 1 -exec sed -i 's/{{.BUILDVERSION}}/$(VERSION)/g' {} \;
+	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 1 -exec sed -i 's/{{.CONTAINER_REPOSITORY}}/$(CONTAINER_REPOSITORY)/g' {} \;
 
 kube-clean: ## removes release manifests
 	rm -f ./kube-manifests/release/*.yml 
