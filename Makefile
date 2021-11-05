@@ -90,14 +90,16 @@ docker-push: ##push your image to the docker hub
 
 ##@ Kubernetes
 
+kustomize-manifests:  ## generated the kubernetes manifests will simple be copied into the kustomize base folder
+	cp ./kube-manifests/templates/*.yml ./kube-manifests/kustomize/base
+
 kube-manifests: kube-clean ## generated the kubernetes manifests and replaces variables in them
-	cp ./kube-manifests/templates/*.yml ./kube-manifests/release/
-	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 1 -exec sed -i 's/{{.IMAGE_NAME}}/$(IMAGE_NAME)/g' {} \;
-	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 1 -exec sed -i 's/{{.APP_NAME}}/$(NAME)/g' {} \;
-	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 1 -exec sed -i 's/{{.VERSION}}/$(VERSION)/g' {} \;
-	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 1 -exec sed -i 's/{{.BUILD_TIME}}/$(BUILD_TIME)/g' {} \;
-	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 1 -exec sed -i 's/{{.BUILDVERSION}}/$(VERSION)/g' {} \;
-	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 1 -exec sed -i 's/{{.CONTAINER_REPOSITORY}}/$(CONTAINER_REPOSITORY)/g' {} \;
+	cp ./kube-manifests/templates/*.yml ./kube-manifests/release
+	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 4 -exec sed -i 's/{{.IMAGE_NAME}}/$(IMAGE_NAME)/g' {} \;
+	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 4 -exec sed -i 's/{{.APP_NAME}}/$(NAME)/g' {} \;
+	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 4 -exec sed -i 's/{{.VERSION}}/$(VERSION)/g' {} \;
+	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 4 -exec sed -i 's/{{.BUILD_TIME}}/$(BUILD_TIME)/g' {} \;
+	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 4 -exec sed -i 's/{{.CONTAINER_REPOSITORY}}/$(CONTAINER_REPOSITORY)/g' {} \;
 
 kube-clean: ## removes release manifests
 	rm -f ./kube-manifests/release/*.yml 

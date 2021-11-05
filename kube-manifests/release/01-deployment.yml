@@ -26,7 +26,7 @@ spec:
           - name: BUILD_VERSION
             value: 0.0.1
           - name: BUILD_TIME
-            value: 2021-10-05_13:59:26
+            value: 2021-11-05_16:32:28
           - name: BUILD_IMAGE
             value: simpleapp:0.0.1
         resources:
