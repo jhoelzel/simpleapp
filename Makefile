@@ -104,8 +104,13 @@ kube-manifests: kube-clean ## generated the kubernetes manifests and replaces va
 kube-clean: ## removes release manifests
 	rm -f ./kube-manifests/release/*.yml 
 
-kube-apply: ## apply kube manifests
-	kubectl apply -f kube-manifests/release -n ${NS}
+kube-apply-nodeport: ## apply kube manifests
+	kubectl apply -f kube-manifests/release/01-deployment.yml -n ${NS}
+	kubectl apply -f kube-manifests/release/02-nodeport-ingress.yml -n ${NS}
+
+kube-apply-lb: ## apply kube manifests
+	kubectl apply -f kube-manifests/release/01-deployment.yml -n ${NS}
+	kubectl apply -f kube-manifests/release/03-loadbalancer-ingress.yml -n ${NS}
 
 kube-remove: ## remove kube manifests
 	kubectl delete -f kube-manifests/release -n ${NS}
