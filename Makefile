@@ -12,7 +12,7 @@ BUILD_TIME?=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 TIMEZONE="Europe/Berlin"
 GOOS?=linux
 GOARCH?=amd64
-PORT?=80
+PORT?=8080
 NS?=default
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)

@@ -16,6 +16,7 @@ func serveStatic(router *mux.Router, staticDirectory string) {
 			http.FileServer(http.Dir(pathValue))))
 	}
 }
+
 //getStaticPaths is responsible for defining static paths
 func getStaticPaths(staticDirectory string) map[string]string {
 	staticPaths := map[string]string{
