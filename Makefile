@@ -74,7 +74,7 @@ build: clean ## build a version of the app, pass Buildversion, Comit and project
 		-o bin/${NAME} ./cmd/${NAME}.go
 
 docker-build: build ## Build the docker image and tag it with the current version and :latest
-	sudo docker build -t ${IMAGE_NAME} -t ${IMAGE_NAME_LATEST} --build-arg tz=${TIMEZONE} . -f ./dockerfiles/Dockerfile
+	sudo docker build -t ${CONTAINER_REPOSITORY}/${IMAGE_NAME} -t  ${CONTAINER_REPOSITORY}/${IMAGE_NAME_LATEST} --build-arg tz=${TIMEZONE} . -f ./dockerfiles/Dockerfile
 
 docker-run: docker-build ## Build the docker image and tag it and run it in docker
 	sudo docker stop $(IMAGE_NAME) || true && sudo docker rm $(IMAGE_NAME) || true
@@ -83,8 +83,8 @@ docker-run: docker-build ## Build the docker image and tag it and run it in dock
 		$(IMAGE_NAME)
 
 docker-push: ##push your image to the docker hub
-	sudo docker tag ${IMAGE_NAME} ${CONTAINER_REPOSITORY}/${IMAGE_NAME}
-	sudo docker tag ${IMAGE_NAME_LATEST} ${CONTAINER_REPOSITORY}/${IMAGE_NAME_LATEST}
+	#sudo docker tag ${CONTAINER_REPOSITORY}/${IMAGE_NAME}
+	#sudo docker tag  ${CONTAINER_REPOSITORY}/${IMAGE_NAME_LATEST}
 	sudo docker push  ${CONTAINER_REPOSITORY}/${IMAGE_NAME}
 	sudo docker push  ${CONTAINER_REPOSITORY}/${IMAGE_NAME_LATEST}
 
