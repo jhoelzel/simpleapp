@@ -4,7 +4,8 @@ VERSION ?= 0.0.1
 NAME = $(shell basename "`pwd`")
 GITBASEURL = github.com/jhoelzel
 CONTAINER_REPOSITORY=ghcr.io
-CONTAINER_REPOSITORY_ACCOUNTNAME=/jhoielzel/
+## Accountname ends in / because there are none on some registrys
+CONTAINER_REPOSITORY_ACCOUNTNAME=jhoelzel/
 PROJECTNAME = $(addprefix ${GITBASEURL}/,${NAME})
 IMAGE_NAME=${NAME}:${VERSION}
 IMAGE_NAME_LATEST=${NAME}:latest
