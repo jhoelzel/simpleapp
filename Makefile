@@ -76,19 +76,17 @@ build: clean ## build a version of the app, pass Buildversion, Comit and project
 		-o bin/${NAME} ./cmd/${NAME}.go
 
 docker-build: build ## Build the docker image and tag it with the current version and :latest
-	sudo docker build -t ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME} -t  ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME_LATEST} --build-arg tz=${TIMEZONE} . -f ./dockerfiles/Dockerfile
+	docker build -t ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME} -t  ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME_LATEST} --build-arg tz=${TIMEZONE} . -f ./dockerfiles/Dockerfile
 
 docker-run: docker-build ## Build the docker image and tag it and run it in docker
-	sudo docker stop $(IMAGE_NAME) || true && sudo docker rm $(IMAGE_NAME) || true
-	sudo docker run --name ${NAME} -p ${PORT}:${PORT} --rm \
+	docker stop $(IMAGE_NAME) || true && docker rm $(IMAGE_NAME) || true
+	docker run --name ${NAME} -p ${PORT}:${PORT} --rm \
 		-e "PORT=${PORT}" \
 		$(IMAGE_NAME)
 
 docker-push: ##push your image to the docker hub
-	#sudo docker tag ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME}
-	#sudo docker tag  ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME_LATEST}
-	sudo docker push  ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME}
-	sudo docker push  ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME_LATEST}
+	docker push  ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME}
+	docker push  ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME_LATEST}
 
 ##@ Kubernetes
 
