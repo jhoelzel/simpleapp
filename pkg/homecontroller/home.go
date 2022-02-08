@@ -3,6 +3,7 @@ package homecontroller
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -48,6 +49,24 @@ func getOutboundIP() net.IP {
 	return localAddr.IP
 }
 
+// Get preferred outbound ip of this machine behind a nat https://www.codershood.info/2017/06/25/http-curl-request-golang/
+func getOutBoundIPNat() string {
+	url := "https://ifconfig.me/ip"
+
+	req, err := http.NewRequest("GET", url, nil)
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return string(err.Error())
+	}
+
+	defer res.Body.Close()
+
+	body, _ := ioutil.ReadAll(res.Body)
+
+	return string(body)
+}
+
 // GetLocalIP returns the non loopback local IP of the host https://stackoverflow.com/questions/23558425/how-do-i-get-the-local-ip-address-in-go
 func getLocalIP() string {
 	addrs, err := net.InterfaceAddrs()
@@ -82,6 +101,7 @@ func homeEndpoint(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("------------------------------------------------\n"))
 	w.Write([]byte("The current User IP: " + getUserIp(r) + "\n"))
 	w.Write([]byte("The current Outbound IP: " + getOutboundIP().String() + "\n"))
+	w.Write([]byte("The current Outbound IP: " + getOutBoundIPNat() + "\n"))
 	w.Write([]byte("The current Local IP: " + getLocalIP() + "\n"))
 	w.Write([]byte("------------------------------------------------\n"))
 
