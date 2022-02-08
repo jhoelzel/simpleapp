@@ -101,7 +101,10 @@ func homeEndpoint(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("------------------------------------------------\n"))
 	w.Write([]byte("The current User IP: " + getUserIp(r) + "\n"))
 	w.Write([]byte("The current Outbound IP: " + getOutboundIP().String() + "\n"))
-	w.Write([]byte("The current Outbound IP: " + getOutBoundIPNat() + "\n"))
+	w.Write([]byte("The current Outbound IP tested: \n"))
+	for i := 1; i < 5; i++ {
+		w.Write([]byte(getOutBoundIPNat() + "\n"))
+	}
 	w.Write([]byte("The current Local IP: " + getLocalIP() + "\n"))
 	w.Write([]byte("------------------------------------------------\n"))
 
