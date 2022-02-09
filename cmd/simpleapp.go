@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -36,6 +38,9 @@ func main() {
 			log.Fatalf("listen: %s\n", err)
 		}
 	}()
+	go udpMain()
+	go TCPmain()
+	go TCPmain2()
 	log.Print("Server Started")
 
 	<-done
@@ -51,4 +56,90 @@ func main() {
 		log.Fatalf("Server Shutdown Failed:%+v", err)
 	}
 	log.Print("Server Exited Properly")
+}
+func udpMain() {
+	/* Lets prepare a address at any address at port 10001*/
+	ServerAddr, _ := net.ResolveUDPAddr("udp", ":5060")
+	fmt.Println("listening on :5060")
+
+	/* Now listen at selected port */
+	ServerConn, _ := net.ListenUDP("udp", ServerAddr)
+	defer ServerConn.Close()
+
+	buf := make([]byte, 1024)
+
+	for {
+		n, addr, err := ServerConn.ReadFromUDP(buf)
+		fmt.Printf("received: %s from: %s\n", string(buf[0:n]), addr)
+
+		if err != nil {
+			fmt.Println("error: ", err)
+		}
+
+		ServerConn.WriteTo(buf[0:n], addr)
+	}
+}
+
+const (
+	CONN_HOST = "localhost"
+	CONN_PORT = "5060"
+	CONN_TYPE = "tcp"
+)
+
+func TCPmain() {
+	// Listen for incoming connections.
+	l, err := net.Listen(CONN_TYPE, ":"+CONN_PORT)
+	if err != nil {
+		fmt.Println("Error listening:", err.Error())
+		os.Exit(1)
+	}
+	// Close the listener when the application closes.
+	defer l.Close()
+	fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
+	for {
+		// Listen for an incoming connection.
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting: ", err.Error())
+			os.Exit(1)
+		}
+		// Handle connections in a new goroutine.
+		go handleRequest(conn)
+	}
+}
+
+// Handles incoming requests.
+func handleRequest(conn net.Conn) {
+	// Make a buffer to hold incoming data.
+	buf := make([]byte, 1024)
+	// Read the incoming connection into the buffer.
+	_, err := conn.Read(buf)
+	if err != nil {
+		fmt.Println("Error reading:", err.Error())
+	}
+	// Send a response back to person contacting us.
+	conn.Write([]byte("Message received."))
+	// Close the connection when you're done with it.
+	conn.Close()
+}
+func TCPmain2() {
+	// Listen for incoming connections.
+	l, err := net.Listen(CONN_TYPE, ":5061")
+	if err != nil {
+		fmt.Println("Error listening:", err.Error())
+		os.Exit(1)
+	}
+	// Close the listener when the application closes.
+	defer l.Close()
+	fmt.Println("Listening on " + CONN_HOST + ":5061")
+	for {
+		// Listen for an incoming connection.
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting: ", err.Error())
+			os.Exit(1)
+		}
+		// Handle connections in a new goroutine.
+		go handleRequest(conn)
+	}
 }

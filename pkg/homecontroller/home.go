@@ -49,6 +49,33 @@ func getOutboundIP() net.IP {
 	return localAddr.IP
 }
 
+// Get preferred outbound ip of this machine https://stackoverflow.com/questions/23558425/how-do-i-get-the-local-ip-address-in-go
+func ConnectToSelf() string {
+	conn, err := net.Dial("udp", ":5060")
+	if err != nil {
+		return string(err.Error())
+	}
+	defer conn.Close()
+
+	return "Connection successful"
+}
+func ConnectToSelfTcP() string {
+	_, err := net.Dial("tcp", ":5060")
+	if err == nil {
+		return "Connection successful"
+	} else {
+		return string(err.Error())
+	}
+}
+func ConnectToSelfTcP61() string {
+	_, err := net.Dial("tcp", ":5061")
+	if err == nil {
+		return "Connection successful"
+	} else {
+		return string(err.Error())
+	}
+}
+
 // Get preferred outbound ip of this machine behind a nat https://www.codershood.info/2017/06/25/http-curl-request-golang/
 func getOutBoundIPNat() string {
 	url := "https://ifconfig.me/ip"
@@ -105,6 +132,9 @@ func homeEndpoint(w http.ResponseWriter, r *http.Request) {
 	for i := 1; i < 5; i++ {
 		w.Write([]byte(getOutBoundIPNat() + "\n"))
 	}
+	w.Write([]byte("UPD Connection port 5060: " + ConnectToSelf() + "\n"))
+	w.Write([]byte("TCP Connection port 5060: " + ConnectToSelfTcP() + "\n"))
+	w.Write([]byte("TCP Connection port 5061: " + ConnectToSelfTcP61() + "\n"))
 	w.Write([]byte("The current Local IP: " + getLocalIP() + "\n"))
 	w.Write([]byte("------------------------------------------------\n"))
 
