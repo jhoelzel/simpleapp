@@ -50,8 +50,10 @@ func getOutboundIP() net.IP {
 }
 
 // Get preferred outbound ip of this machine https://stackoverflow.com/questions/23558425/how-do-i-get-the-local-ip-address-in-go
-func ConnectToSelf() string {
-	conn, err := net.Dial("udp", ":5060")
+func ConnectToSelf(secretIp string) string {
+	var dialer net.Dialer
+	dialer.Timeout = time.Second
+	conn, err := dialer.Dial("udp", secretIp+":5060")
 	if err != nil {
 		return string(err.Error())
 	}
@@ -59,16 +61,20 @@ func ConnectToSelf() string {
 
 	return "Connection successful"
 }
-func ConnectToSelfTcP() string {
-	_, err := net.Dial("tcp", ":5060")
+func ConnectToSelfTcP(secretIp string) string {
+	var dialer net.Dialer
+	dialer.Timeout = time.Second
+	_, err := dialer.Dial("tcp", secretIp+":5060")
 	if err == nil {
 		return "Connection successful"
 	} else {
 		return string(err.Error())
 	}
 }
-func ConnectToSelfTcP61() string {
-	_, err := net.Dial("tcp", ":5061")
+func ConnectToSelfTcP61(secretIp string) string {
+	var dialer net.Dialer
+	dialer.Timeout = time.Second
+	_, err := dialer.Dial("tcp", secretIp+":5061")
 	if err == nil {
 		return "Connection successful"
 	} else {
@@ -119,6 +125,14 @@ func homeEndpoint(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprint(err), http.StatusInternalServerError)
 		return
 	}
+	keys, ok := r.URL.Query()["secretIp"]
+	secretIp := "127.0.0.1"
+	if !ok || len(keys[0]) < 1 {
+		log.Println("Url Param 'key' is missing")
+
+	} else {
+		secretIp = keys[0]
+	}
 	w.Write([]byte("Welcome to the simpleapp test image!\n"))
 	w.Write([]byte("------------------------------------------------\n"))
 	w.Write([]byte("Running on container: " + hostname + "\n"))
@@ -132,9 +146,9 @@ func homeEndpoint(w http.ResponseWriter, r *http.Request) {
 	for i := 1; i < 5; i++ {
 		w.Write([]byte(getOutBoundIPNat() + "\n"))
 	}
-	w.Write([]byte("UPD Connection port 5060: " + ConnectToSelf() + "\n"))
-	w.Write([]byte("TCP Connection port 5060: " + ConnectToSelfTcP() + "\n"))
-	w.Write([]byte("TCP Connection port 5061: " + ConnectToSelfTcP61() + "\n"))
+	w.Write([]byte("UPD Connection port 5060: " + ConnectToSelf(secretIp) + "\n"))
+	w.Write([]byte("TCP Connection port 5060: " + ConnectToSelfTcP(secretIp) + "\n"))
+	w.Write([]byte("TCP Connection port 5061: " + ConnectToSelfTcP61(secretIp) + "\n"))
 	w.Write([]byte("The current Local IP: " + getLocalIP() + "\n"))
 	w.Write([]byte("------------------------------------------------\n"))
 
