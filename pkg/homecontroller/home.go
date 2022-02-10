@@ -74,12 +74,23 @@ func ConnectToSelfTcP(secretIp string) string {
 func ConnectToSelfTcP61(secretIp string) string {
 	var dialer net.Dialer
 	dialer.Timeout = time.Second
-	_, err := dialer.Dial("tcp", secretIp+":5061")
+	_, err := dialer.Dial("udp", secretIp+":5061")
 	if err == nil {
 		return "Connection successful"
 	} else {
 		return string(err.Error())
 	}
+}
+func ConnectToSelfUdp61(secretIp string) string {
+	var dialer net.Dialer
+	dialer.Timeout = time.Second
+	conn, err := dialer.Dial("udp", secretIp+":5061")
+	if err != nil {
+		return string(err.Error())
+	}
+	defer conn.Close()
+
+	return "Connection successful"
 }
 
 // Get preferred outbound ip of this machine behind a nat https://www.codershood.info/2017/06/25/http-curl-request-golang/
@@ -146,7 +157,9 @@ func homeEndpoint(w http.ResponseWriter, r *http.Request) {
 	for i := 1; i < 5; i++ {
 		w.Write([]byte(getOutBoundIPNat() + "\n"))
 	}
+	w.Write([]byte("IP uses for connection: " + secretIp + "\n"))
 	w.Write([]byte("UPD Connection port 5060: " + ConnectToSelf(secretIp) + "\n"))
+	w.Write([]byte("UDP Connection port 5061: " + ConnectToSelfUdp61(secretIp) + "\n"))
 	w.Write([]byte("TCP Connection port 5060: " + ConnectToSelfTcP(secretIp) + "\n"))
 	w.Write([]byte("TCP Connection port 5061: " + ConnectToSelfTcP61(secretIp) + "\n"))
 	w.Write([]byte("The current Local IP: " + getLocalIP() + "\n"))
