@@ -1,6 +1,6 @@
 # VERSION defines the project version for the bundle.
 # Update this value when you upgrade the version of your project.
-VERSION ?= 0.0.1
+VERSION ?= 0.0.2
 NAME = $(shell basename "`pwd`")
 GITBASEURL = github.com/jhoelzel
 CONTAINER_REPOSITORY=ghcr.io
