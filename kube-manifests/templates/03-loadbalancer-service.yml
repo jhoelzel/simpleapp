@@ -4,12 +4,14 @@ metadata:
   name: {{.APP_NAME}}-loadbalancer-service
   labels:
     app: {{.APP_NAME}}
-    version: {{.VERSION}}
+    app.kubernetes.io/name: {{.APP_NAME}}
+    app.kubernetes.io/version: "{{.VERSION}}"
 spec:
   type: LoadBalancer
   selector:
     app: {{.APP_NAME}}
-    version: {{.VERSION}}
   ports:
-  - port: 80
-    targetPort: 8080
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: http

@@ -1,4 +1,4 @@
-//statuscontroller defines all handlerfucs in the /status/ directory
+// statuscontroller defines all handlerfucs in the /status/ directory
 package statuscontroller
 
 import (
@@ -11,12 +11,13 @@ import (
 )
 
 func infoEndpoint(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(200)
 	hostname, err := os.Hostname()
 	if err != nil {
 		http.Error(w, fmt.Sprint(err), http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Welcome to our test image!\n"))
 	w.Write([]byte("------------------------------------------------\n"))
 	w.Write([]byte("Running on container: " + hostname + "\n"))

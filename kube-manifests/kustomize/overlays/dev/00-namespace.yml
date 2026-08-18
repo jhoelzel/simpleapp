@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: simpleapp-dev
+  labels:
+    app.kubernetes.io/name: simpleapp
+    app.kubernetes.io/part-of: simpleapp-demo

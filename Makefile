@@ -1,17 +1,15 @@
 # VERSION defines the project version for the bundle.
 # Update this value when you upgrade the version of your project.
-VERSION ?= 0.0.3
+VERSION ?= 0.0.4
 NAME = $(shell basename "`pwd`")
 GITBASEURL = github.com/jhoelzel
 CONTAINER_REPOSITORY=ghcr.io
 ## Accountname ends in / because there are none on some registrys
 CONTAINER_REPOSITORY_ACCOUNTNAME=jhoelzel/
+IMAGE_REPOSITORY=$(CONTAINER_REPOSITORY)/$(CONTAINER_REPOSITORY_ACCOUNTNAME)$(NAME)
 PROJECTNAME = $(addprefix ${GITBASEURL}/,${NAME})
-IMAGE_NAME=${NAME}:${VERSION}
-IMAGE_NAME_LATEST=${NAME}:latest
 COMMIT?=$(shell git rev-parse --short HEAD)
-BUILD_TIME?=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
-TIMEZONE="Europe/Berlin"
+BUILD_TIME?=$(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 GOOS?=linux
 GOARCH?=amd64
 PORT?=8080
@@ -71,49 +69,60 @@ clean: ## remove previous binaries
 
 build: clean ## build a version of the app, pass Buildversion, Comit and projectname as build arguments
 	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build \
+		-trimpath \
 		-ldflags "-s -w -X ${PROJECTNAME}/pkg/version.Release=${VERSION} \
 		-X ${PROJECTNAME}/pkg/version.Commit=${COMMIT} -X ${PROJECTNAME}/pkg/version.BuildTime=${BUILD_TIME}" \
 		-o bin/${NAME} ./cmd/${NAME}.go
 
-docker-build: build ## Build the docker image and tag it with the current version and :latest
-	docker build -t ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME} -t  ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME_LATEST} --build-arg tz=${TIMEZONE} . -f ./dockerfiles/Dockerfile
+docker-build: ## Build the docker image and tag it with the current version and :latest
+	docker build \
+		-t ${IMAGE_REPOSITORY}:${VERSION} \
+		-t ${IMAGE_REPOSITORY}:latest \
+		--build-arg VERSION=${VERSION} \
+		--build-arg COMMIT=${COMMIT} \
+		--build-arg BUILD_TIME=${BUILD_TIME} \
+		. -f ./dockerfiles/Dockerfile
 
 docker-run: docker-build ## Build the docker image and tag it and run it in docker
-	docker stop $(IMAGE_NAME) || true && docker rm $(IMAGE_NAME) || true
-	docker run --name ${NAME} -p ${PORT}:${PORT} --rm \
-		-e "PORT=${PORT}" \
-		$(IMAGE_NAME)
+	docker stop ${NAME} || true && docker rm ${NAME} || true
+	docker run --name ${NAME} -p ${PORT}:8080 --rm \
+		${IMAGE_REPOSITORY}:${VERSION}
 
 docker-push: ##push your image to the docker hub
-	docker push  ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME}
-	docker push  ${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_ACCOUNTNAME}${IMAGE_NAME_LATEST}
+	docker push ${IMAGE_REPOSITORY}:${VERSION}
+	docker push ${IMAGE_REPOSITORY}:latest
 
 ##@ Kubernetes
 
-kustomize-manifests:  ## generated the kubernetes manifests will simple be copied into the kustomize base folder
-	cp ./kube-manifests/templates/*.yml ./kube-manifests/kustomize/base
+kustomize-manifests: ## Refresh the base Deployment and each overlay Service from templates.
+	cp ./kube-manifests/templates/01-deployment.yml ./kube-manifests/kustomize/base/01-deployment.yml
+	cp ./kube-manifests/templates/02-nodeport-service.yml ./kube-manifests/kustomize/overlays/dev/02-nodeport-service.yml
+	cp ./kube-manifests/templates/03-loadbalancer-service.yml ./kube-manifests/kustomize/overlays/prod/03-loadbalancer-service.yml
+	find ./kube-manifests/kustomize/ \( -name '*.yml' \) -maxdepth 5 -exec sed -i 's|{{.IMAGE_REPOSITORY}}|$(IMAGE_REPOSITORY)|g' {} \;
+	find ./kube-manifests/kustomize/ \( -name '*.yml' \) -maxdepth 5 -exec sed -i 's/{{.APP_NAME}}/$(NAME)/g' {} \;
+	find ./kube-manifests/kustomize/ \( -name '*.yml' \) -maxdepth 5 -exec sed -i 's/{{.VERSION}}/$(VERSION)/g' {} \;
 
 kube-manifests: kube-clean ## generated the kubernetes manifests and replaces variables in them
 	cp ./kube-manifests/templates/*.yml ./kube-manifests/release
-	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 4 -exec sed -i 's/{{.IMAGE_NAME}}/$(IMAGE_NAME)/g' {} \;
+	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 4 -exec sed -i 's|{{.IMAGE_REPOSITORY}}|$(IMAGE_REPOSITORY)|g' {} \;
 	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 4 -exec sed -i 's/{{.APP_NAME}}/$(NAME)/g' {} \;
 	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 4 -exec sed -i 's/{{.VERSION}}/$(VERSION)/g' {} \;
-	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 4 -exec sed -i 's/{{.BUILD_TIME}}/$(BUILD_TIME)/g' {} \;
-	find ./kube-manifests/release/ \( -name '*.yml' \) -maxdepth 4 -exec sed -i 's/{{.CONTAINER_REPOSITORY}}/$(CONTAINER_REPOSITORY)/g' {} \;
 
 kube-clean: ## removes release manifests
 	rm -f ./kube-manifests/release/*.yml 
 
 kube-apply-nodeport: ## apply kube manifests
 	kubectl apply -f kube-manifests/release/01-deployment.yml -n ${NS}
-	kubectl apply -f kube-manifests/release/02-nodeport-ingress.yml -n ${NS}
+	kubectl apply -f kube-manifests/release/02-nodeport-service.yml -n ${NS}
 
 kube-apply-lb: ## apply kube manifests
 	kubectl apply -f kube-manifests/release/01-deployment.yml -n ${NS}
-	kubectl apply -f kube-manifests/release/03-loadbalancer-ingress.yml -n ${NS}
+	kubectl apply -f kube-manifests/release/03-loadbalancer-service.yml -n ${NS}
+
+kube-apply: kube-apply-lb ## Compatibility alias: apply the LoadBalancer release.
 
 kube-remove: ## remove kube manifests
-	kubectl delete -f kube-manifests/release -n ${NS}
+	kubectl delete -f kube-manifests/release -n ${NS} --ignore-not-found=true
 
 kube-ns: ## create desired namespace
 	kubectl create namespace ${NS}
@@ -121,5 +130,4 @@ kube-ns: ## create desired namespace
 kube-removens: ## remove the desired namespace
 	kubectl delete namespace ${NS}
 
-kube-renew: build docker-build kube-remove kube-apply ## build, docker-build, remove existing deployment, deploy
-
+kube-renew: docker-build kube-manifests kube-remove kube-apply ## Build, replace, and deploy the LoadBalancer release.

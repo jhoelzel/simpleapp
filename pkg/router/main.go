@@ -8,11 +8,11 @@ import (
 )
 
 // Get Returns a router with all neccessairy  routes set up
-func Get(buildTime, commit, release string) *mux.Router {
+func Get(release string) *mux.Router {
 	r := mux.NewRouter()
 	homecontroller.RegisterSubRouter(r)
 	statuscontroller.RegisterSubRouter(r)
-	r.Use(logMiddleware)
+	r.Use(accessLogMiddleware(release))
 
 	return r
 }

@@ -1,13 +1,12 @@
-//homecontroller defines all handlerfucs in the root directory
+// Package homecontroller serves the interactive request and network
+// diagnostics dashboard.
 package homecontroller
 
-import (
-	"github.com/gorilla/mux"
-)
+import "github.com/gorilla/mux"
 
+// RegisterSubRouter registers interactive and machine-readable diagnostics.
 func RegisterSubRouter(r *mux.Router) {
-	r.HandleFunc("/", homeEndpoint).Methods("GET")
-	//static file handling
-	serveStatic(r, "/static/")
-
+	r.HandleFunc("/api/request", requestDetailsEndpoint)
+	r.HandleFunc("/api/port-check", PortCheckEndpoint)
+	r.HandleFunc("/", homeEndpoint)
 }

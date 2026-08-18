@@ -1,50 +1,136 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: simpleapp
   labels:
     app: simpleapp
-  name: simpleapp
+    app.kubernetes.io/name: simpleapp
+    app.kubernetes.io/version: "0.0.4"
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: simpleapp
-      version: 0.0.1
   template:
     metadata:
       labels:
         app: simpleapp
-        version: 0.0.1
+        app.kubernetes.io/name: simpleapp
+        app.kubernetes.io/version: "0.0.4"
     spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-      - image: microk8s:32000/simpleapp:0.0.1
-        name: simpleapp
+      - name: simpleapp
+        image: ghcr.io/jhoelzel/simpleapp:0.0.4
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
-          - name: http
-            containerPort: 8080
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: tcp-5060
+          containerPort: 5060
+          protocol: TCP
+        - name: udp-5060
+          containerPort: 5060
+          protocol: UDP
+        - name: tcp-5061
+          containerPort: 5061
+          protocol: TCP
         env:
-          - name: BUILD_VERSION
-            value: 0.0.1
-          - name: BUILD_TIME
-            value: 2021-11-05_16:32:28
-          - name: BUILD_IMAGE
-            value: simpleapp:0.0.1
+        - name: BUILD_IMAGE
+          value: "ghcr.io/jhoelzel/simpleapp:0.0.4"
+        - name: CONTAINER_NAME
+          value: "simpleapp"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: SERVICE_ACCOUNT
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.serviceAccountName
+        - name: CPU_REQUEST_MILLICORES
+          valueFrom:
+            resourceFieldRef:
+              containerName: simpleapp
+              resource: requests.cpu
+              divisor: 1m
+        - name: CPU_LIMIT_MILLICORES
+          valueFrom:
+            resourceFieldRef:
+              containerName: simpleapp
+              resource: limits.cpu
+              divisor: 1m
+        - name: MEMORY_REQUEST_BYTES
+          valueFrom:
+            resourceFieldRef:
+              containerName: simpleapp
+              resource: requests.memory
+              divisor: "1"
+        - name: MEMORY_LIMIT_BYTES
+          valueFrom:
+            resourceFieldRef:
+              containerName: simpleapp
+              resource: limits.memory
+              divisor: "1"
         resources:
-            requests:
-              cpu: "15m"
-              memory: "15Mi"
-            limits:
-              cpu: "50m"
-              memory: "50Mi"
+          requests:
+            cpu: 15m
+            memory: 15Mi
+          limits:
+            cpu: 50m
+            memory: 50Mi
+        startupProbe:
+          httpGet:
+            path: /status/healthz
+            port: http
+          failureThreshold: 30
+          periodSeconds: 1
+          timeoutSeconds: 1
         livenessProbe:
           httpGet:
             path: /status/healthz
-            port: 8080
-          initialDelaySeconds: 3
-          periodSeconds: 3
+            port: http
+          failureThreshold: 3
+          periodSeconds: 10
+          timeoutSeconds: 2
         readinessProbe:
           httpGet:
             path: /status/readyz
-            port: 8080
-          initialDelaySeconds: 3
-          periodSeconds: 3
+            port: http
+          failureThreshold: 3
+          periodSeconds: 5
+          timeoutSeconds: 2

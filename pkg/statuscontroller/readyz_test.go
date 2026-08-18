@@ -1,4 +1,4 @@
-//statuscontroller defines all handlerfucs in the /status/ directory
+// statuscontroller defines all handlerfucs in the /status/ directory
 package statuscontroller
 
 import (
@@ -17,7 +17,7 @@ func Test_readyzEndpoint(t *testing.T) {
 
 	// We create a ResponseRecorder (which satisfies http.ResponseWriter) to record the response.
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(healthzEndpoint)
+	handler := http.HandlerFunc(readyzEndpoint)
 
 	// Our handlers satisfy http.Handler, so we can call their ServeHTTP method
 	// directly and pass in our Request and ResponseRecorder.

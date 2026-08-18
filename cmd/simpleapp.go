@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,131 +18,186 @@ import (
 	"github.com/jhoelzel/simpleapp/pkg/version"
 )
 
-func main() {
-	log.Printf(
-		"Starting the service...\ncommit: %s, build time: %s, release: %s",
-		version.Commit, version.BuildTime, version.Release,
-	)
-	router := router.Get(version.BuildTime, version.Commit, version.Release)
-
-	srv := &http.Server{
-		Addr:         ":8080",
-		WriteTimeout: time.Second * 15,
-		ReadTimeout:  time.Second * 15,
-		IdleTimeout:  time.Second * 60,
-		Handler:      router,
-	}
-
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %s\n", err)
-		}
-	}()
-	go udpMain()
-	go TCPmain()
-	go TCPmain2()
-	log.Print("Server Started")
-
-	<-done
-	log.Print("Server Stopped")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer func() {
-		// extra handling here
-		cancel()
-	}()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server Shutdown Failed:%+v", err)
-	}
-	log.Print("Server Exited Properly")
-}
-func udpMain() {
-	/* Lets prepare a address at any address at port 10001*/
-	ServerAddr, _ := net.ResolveUDPAddr("udp", ":5060")
-	fmt.Println("listening on :5060")
-
-	/* Now listen at selected port */
-	ServerConn, _ := net.ListenUDP("udp", ServerAddr)
-	defer ServerConn.Close()
-
-	buf := make([]byte, 1024)
-
-	for {
-		n, addr, err := ServerConn.ReadFromUDP(buf)
-		fmt.Printf("received: %s from: %s\n", string(buf[0:n]), addr)
-
-		if err != nil {
-			fmt.Println("error: ", err)
-		}
-
-		ServerConn.WriteTo(buf[0:n], addr)
-	}
-}
-
 const (
-	CONN_HOST = "localhost"
-	CONN_PORT = "5060"
-	CONN_TYPE = "tcp"
+	defaultHTTPPort = 8080
+	demoUDPPort     = 5060
+	demoTCPPort1    = 5060
+	demoTCPPort2    = 5061
+	maxTCPClients   = 128
 )
 
-func TCPmain() {
-	// Listen for incoming connections.
-	l, err := net.Listen(CONN_TYPE, ":"+CONN_PORT)
-	if err != nil {
-		fmt.Println("Error listening:", err.Error())
-		os.Exit(1)
+var demoTCPClientSlots = make(chan struct{}, maxTCPClients)
+
+func main() {
+	log.Printf(
+		"starting simpleapp release=%s commit=%s build_time=%s",
+		version.Release, version.Commit, version.BuildTime,
+	)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	httpPort := configuredPort("PORT", defaultHTTPPort)
+	srv := &http.Server{
+		Addr:              net.JoinHostPort("", strconv.Itoa(httpPort)),
+		Handler:           router.Get(version.Release),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
-	// Close the listener when the application closes.
-	defer l.Close()
-	fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
-	for {
-		// Listen for an incoming connection.
-		conn, err := l.Accept()
-		if err != nil {
-			fmt.Println("Error accepting: ", err.Error())
-			os.Exit(1)
-		}
-		// Handle connections in a new goroutine.
-		go handleRequest(conn)
+
+	errCh := make(chan error, 4)
+	go runHTTPServer(srv, errCh)
+	go runTCPDemo(ctx, demoTCPPort1, errCh)
+	go runTCPDemo(ctx, demoTCPPort2, errCh)
+	go runUDPDemo(ctx, demoUDPPort, errCh)
+
+	log.Printf("listeners ready: http=%d tcp=%d,%d udp=%d", httpPort, demoTCPPort1, demoTCPPort2, demoUDPPort)
+
+	select {
+	case <-ctx.Done():
+		log.Print("shutdown signal received")
+	case err := <-errCh:
+		log.Printf("listener stopped unexpectedly: %v", err)
+		stop()
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP shutdown did not complete cleanly: %v", err)
+	}
+	log.Print("simpleapp stopped")
+}
+
+func configuredPort(name string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 || port == demoTCPPort1 || port == demoTCPPort2 {
+		log.Printf("ignoring invalid %s=%q; using %d", name, value, fallback)
+		return fallback
+	}
+	return port
+}
+
+func runHTTPServer(srv *http.Server, errCh chan<- error) {
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		errCh <- fmt.Errorf("HTTP %s: %w", srv.Addr, err)
 	}
 }
 
-// Handles incoming requests.
-func handleRequest(conn net.Conn) {
-	// Make a buffer to hold incoming data.
-	buf := make([]byte, 1024)
-	// Read the incoming connection into the buffer.
-	_, err := conn.Read(buf)
+func runTCPDemo(ctx context.Context, port int, errCh chan<- error) {
+	address := net.JoinHostPort("", strconv.Itoa(port))
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", address)
 	if err != nil {
-		fmt.Println("Error reading:", err.Error())
+		errCh <- fmt.Errorf("TCP %s: %w", address, err)
+		return
 	}
-	// Send a response back to person contacting us.
-	conn.Write([]byte("Message received."))
-	// Close the connection when you're done with it.
-	conn.Close()
-}
-func TCPmain2() {
-	// Listen for incoming connections.
-	l, err := net.Listen(CONN_TYPE, ":5061")
-	if err != nil {
-		fmt.Println("Error listening:", err.Error())
-		os.Exit(1)
-	}
-	// Close the listener when the application closes.
-	defer l.Close()
-	fmt.Println("Listening on " + CONN_HOST + ":5061")
+	defer listener.Close()
+
+	go func() {
+		<-ctx.Done()
+		_ = listener.Close()
+	}()
+
+	retryDelay := time.Duration(0)
 	for {
-		// Listen for an incoming connection.
-		conn, err := l.Accept()
-		if err != nil {
-			fmt.Println("Error accepting: ", err.Error())
-			os.Exit(1)
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			if ctx.Err() != nil || errors.Is(acceptErr, net.ErrClosed) {
+				return
+			}
+			if retryDelay == 0 {
+				retryDelay = 5 * time.Millisecond
+			} else {
+				retryDelay *= 2
+				if retryDelay > time.Second {
+					retryDelay = time.Second
+				}
+			}
+			log.Printf("TCP %s accept error; retrying in %s: %v", address, retryDelay, acceptErr)
+			if !waitForRetry(ctx, retryDelay) {
+				return
+			}
+			continue
 		}
-		// Handle connections in a new goroutine.
-		go handleRequest(conn)
+		retryDelay = 0
+		select {
+		case demoTCPClientSlots <- struct{}{}:
+			go func() {
+				defer func() { <-demoTCPClientSlots }()
+				handleTCPConnection(conn)
+			}()
+		default:
+			_ = conn.Close()
+		}
+	}
+}
+
+func handleTCPConnection(conn net.Conn) {
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	_, _ = conn.Write([]byte("simpleapp TCP echo ready\n"))
+
+	buffer := make([]byte, 4096)
+	for {
+		n, err := conn.Read(buffer)
+		if n > 0 {
+			if _, writeErr := conn.Write(buffer[:n]); writeErr != nil {
+				return
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func runUDPDemo(ctx context.Context, port int, errCh chan<- error) {
+	address := net.JoinHostPort("", strconv.Itoa(port))
+	packetConn, err := (&net.ListenConfig{}).ListenPacket(ctx, "udp", address)
+	if err != nil {
+		errCh <- fmt.Errorf("UDP %s: %w", address, err)
+		return
+	}
+	defer packetConn.Close()
+
+	go func() {
+		<-ctx.Done()
+		_ = packetConn.Close()
+	}()
+
+	buffer := make([]byte, 4096)
+	for {
+		n, remote, readErr := packetConn.ReadFrom(buffer)
+		if readErr != nil {
+			if ctx.Err() != nil || errors.Is(readErr, net.ErrClosed) {
+				return
+			}
+			log.Printf("UDP %s read error: %v", address, readErr)
+			if !waitForRetry(ctx, 50*time.Millisecond) {
+				return
+			}
+			continue
+		}
+		if _, writeErr := packetConn.WriteTo(buffer[:n], remote); writeErr != nil {
+			log.Printf("UDP %s echo error: %v", address, writeErr)
+		}
+	}
+}
+
+func waitForRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }

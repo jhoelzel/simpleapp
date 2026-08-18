@@ -1,0 +1,6 @@
+.git
+.github
+bin
+kube-manifests
+*.md
+LICENSE*

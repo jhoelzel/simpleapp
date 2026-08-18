@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en" style="--pod-hue: {{.PodHue}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>simpleapp · request &amp; pod diagnostics</title>
+  <style>
+    :root {
+      --bg: #071018;
+      --surface: rgba(15, 30, 42, .82);
+      --surface-strong: #112635;
+      --line: rgba(159, 196, 213, .18);
+      --muted: #91a9b6;
+      --text: #ecf7f8;
+      --accent: hsl(var(--pod-hue), 78%, 72%);
+      --accent-soft: hsla(var(--pod-hue), 78%, 72%, .14);
+      --good: #59d999;
+      --warn: #ffc868;
+      --bad: #ff7e91;
+      --radius: 18px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 82% -10%, var(--accent-soft), transparent 35rem),
+        radial-gradient(circle at -10% 28%, rgba(44, 145, 170, .13), transparent 30rem),
+        var(--bg);
+    }
+    body::before {
+      position: fixed; inset: 0; pointer-events: none; content: ""; opacity: .12;
+      background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: linear-gradient(to bottom, black, transparent 70%);
+    }
+    a { color: inherit; }
+    code, pre, input, select, button { font: inherit; }
+    code, pre, .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .shell { width: min(1420px, calc(100% - 32px)); margin: 0 auto; position: relative; }
+    header { padding: 52px 0 30px; }
+    .eyebrow { margin: 0 0 12px; color: var(--accent); font: 700 .76rem/1.2 "SFMono-Regular", Consolas, monospace; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { max-width: 980px; margin: 0; font-size: clamp(2rem, 6vw, 4.8rem); line-height: .98; letter-spacing: -.055em; }
+    h1 code { color: var(--accent); font-size: .9em; overflow-wrap: anywhere; }
+    .lede { max-width: 780px; margin: 20px 0 0; color: var(--muted); font-size: 1.03rem; line-height: 1.65; }
+    .toolbar, .badges { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+    .toolbar { margin-top: 24px; }
+    .badge, .button {
+      display: inline-flex; align-items: center; min-height: 36px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px;
+      background: rgba(10, 24, 34, .72); color: var(--muted); text-decoration: none; font-size: .82rem;
+    }
+    .badge strong { margin-left: 7px; color: var(--text); font-weight: 650; }
+    .button { cursor: pointer; color: var(--text); transition: border-color .15s, transform .15s, background .15s; }
+    .button:hover { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
+    .button.primary { border-color: transparent; background: var(--accent); color: #061014; font-weight: 750; }
+    main { display: grid; gap: 22px; padding: 8px 0 64px; }
+    .section { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: 0 20px 80px rgba(0,0,0,.22); backdrop-filter: blur(14px); overflow: hidden; }
+    .section-head { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; padding: 22px 24px; border-bottom: 1px solid var(--line); }
+    .section-head h2 { margin: 0; font-size: 1.1rem; letter-spacing: -.02em; }
+    .section-head p { max-width: 720px; margin: 6px 0 0; color: var(--muted); font-size: .87rem; line-height: 1.5; }
+    .section-body { padding: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+    .span-4 { grid-column: span 4; } .span-5 { grid-column: span 5; } .span-6 { grid-column: span 6; } .span-7 { grid-column: span 7; } .span-8 { grid-column: span 8; } .span-12 { grid-column: 1 / -1; }
+    .card { min-width: 0; padding: 17px; border: 1px solid var(--line); border-radius: 14px; background: rgba(7, 18, 27, .62); }
+    .card h3 { margin: 0 0 15px; font-size: .78rem; color: var(--accent); letter-spacing: .1em; text-transform: uppercase; }
+    .facts { display: grid; grid-template-columns: minmax(120px, .42fr) minmax(0, 1fr); gap: 0; margin: 0; }
+    .facts dt, .facts dd { min-width: 0; margin: 0; padding: 9px 0; border-bottom: 1px solid rgba(159, 196, 213, .1); font-size: .84rem; }
+    .facts dt { color: var(--muted); }
+    .facts dd { overflow-wrap: anywhere; }
+    .facts dt:last-of-type, .facts dd:last-of-type { border-bottom: 0; }
+    .claim { color: var(--warn); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    th, td { padding: 11px 13px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; background: rgba(17,38,53,.8); }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { width: 28%; color: var(--accent); white-space: nowrap; }
+    td code { display: block; margin: 0 0 4px; overflow-wrap: anywhere; white-space: pre-wrap; }
+    td code:last-child { margin-bottom: 0; }
+    pre { max-height: 440px; margin: 0; padding: 17px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: #050d13; color: #cce4e8; font-size: .78rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+    .empty { margin: 0; padding: 17px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: .85rem; line-height: 1.55; }
+    .warning { padding: 12px 14px; border-left: 3px solid var(--warn); border-radius: 8px; background: rgba(255, 200, 104, .08); color: #e7d1a5; font-size: .82rem; line-height: 1.5; }
+    .stack { display: grid; gap: 14px; }
+    .form-grid { display: grid; grid-template-columns: minmax(170px, 1.2fr) minmax(210px, 1.7fr) minmax(130px, .7fr) minmax(120px, .7fr) auto; gap: 12px; align-items: end; }
+    label { display: grid; gap: 7px; color: var(--muted); font-size: .76rem; }
+    input, select { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; outline: 0; background: #07131c; color: var(--text); }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    button.button { min-height: 44px; border-radius: 10px; justify-content: center; }
+    button:disabled { opacity: .58; cursor: wait; }
+    .scan-summary { display: none; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--accent-soft); }
+    .scan-summary.visible { display: block; }
+    .status { font-weight: 750; }
+    .status-open, .status-responded { color: var(--good); }
+    .status-closed { color: var(--muted); }
+    .status-timeout, .status-unknown { color: var(--warn); }
+    .status-error, .status-unreachable, .status-cancelled { color: var(--bad); }
+    .interface-list { display: grid; gap: 10px; }
+    .interface { padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+    .interface strong { color: var(--accent); }
+    .interface small { display: block; margin-top: 5px; color: var(--muted); overflow-wrap: anywhere; }
+    footer { padding: 0 0 36px; color: var(--muted); font-size: .78rem; text-align: center; }
+    @media (max-width: 1000px) { .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; } .form-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 640px) { .shell { width: min(100% - 20px, 1420px); } header { padding-top: 32px; } .section-head, .section-body { padding: 17px; } .form-grid { grid-template-columns: 1fr; } .facts { grid-template-columns: 1fr; } .facts dt { border-bottom: 0; padding-bottom: 2px; } .facts dd { padding-top: 2px; } td:first-child { white-space: normal; } }
+  </style>
+</head>
+<body>
+  <header class="shell">
+    <p class="eyebrow">Kubernetes traffic laboratory</p>
+    <h1>Request landed on <code>{{if .Runtime.Kubernetes.PodName}}{{.Runtime.Kubernetes.PodName}}{{else}}{{.Runtime.Hostname}}{{end}}</code></h1>
+    <p class="lede">A live view of the HTTP request that reached this process, the pod and runtime serving it, and the network paths this pod can test. Refresh behind a multi-replica Service to watch traffic move.</p>
+    <div class="toolbar">
+      <a class="button primary" href="/">Send another request</a>
+      <a class="button" href="/?format=json&amp;pretty=1">Open JSON</a>
+      <span class="badge">namespace <strong>{{if .Runtime.Kubernetes.PodNamespace}}{{.Runtime.Kubernetes.PodNamespace}}{{else}}local{{end}}</strong></span>
+      <span class="badge">release <strong>{{.Runtime.Build.Release}}</strong></span>
+      <span class="badge">transport <strong>{{.Request.Scheme}} · {{.Request.Proto}}</strong></span>
+      <span class="badge">credentials <strong>{{if .Request.SensitiveDataShown}}visible{{else}}redacted{{end}}</strong></span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="section">
+      <div class="section-head">
+        <div><h2>Incoming request</h2><p>What the application received after the load balancer, ingress, gateway, or proxy finished processing the connection.</p></div>
+        <span class="badge">captured <strong>{{.Request.CollectedAt.Format "15:04:05.000 UTC"}}</strong></span>
+      </div>
+      <div class="section-body grid">
+        {{if .Request.SensitiveDataShown}}<div class="warning span-12"><strong>Unsafe demo mode is active:</strong> credential-like headers and query values are visible because <code>SHOW_SENSITIVE_DATA=true</code>.</div>{{end}}
+        <div class="card span-7">
+          <h3>Request line &amp; sockets</h3>
+          <dl class="facts">
+            <dt>Method</dt><dd><code>{{.Request.Method}}</code></dd>
+            <dt>Request URI</dt><dd><code>{{.Request.RequestURI}}</code></dd>
+            <dt>Host</dt><dd><code>{{.Request.Host}}</code></dd>
+            <dt>Transport</dt><dd><code>{{.Request.Scheme}} · {{.Request.Proto}}</code></dd>
+            <dt>Direct peer</dt><dd><code>{{.Request.RemoteAddr}}</code></dd>
+            <dt>Local socket</dt><dd><code>{{if .Request.LocalAddr}}{{.Request.LocalAddr}}{{else}}not exposed by request context{{end}}</code></dd>
+            <dt>Content length</dt><dd><code>{{.Request.ContentLength}}</code></dd>
+            <dt>Transfer encoding</dt><dd><code>{{if .Request.TransferEncoding}}{{join .Request.TransferEncoding ", "}}{{else}}none{{end}}</code></dd>
+          </dl>
+        </div>
+        <div class="card span-5">
+          <h3>Reported client</h3>
+          {{if .Request.ReportedClient.Value}}
+          <dl class="facts">
+            <dt>Header</dt><dd><code>{{.Request.ReportedClient.Source}}</code></dd>
+            <dt>Claimed value</dt><dd class="claim"><code>{{.Request.ReportedClient.Value}}</code></dd>
+            <dt>Trusted</dt><dd>No — proxy trust is deployment-specific</dd>
+          </dl>
+          {{else}}
+          <p class="empty">No recognized forwarding header reported an original client. The direct peer above is the only address visible to this process.</p>
+          {{end}}
+          <p class="warning">Forwarding headers can be spoofed by a direct client unless a trusted proxy removes and rewrites them.</p>
+        </div>
+
+        <div class="card span-6">
+          <h3>Load balancer &amp; trace headers</h3>
+          {{if .Request.LoadBalancerHeaders}}
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Values</th></tr></thead><tbody>
+          {{range .Request.LoadBalancerHeaders}}<tr><td>{{.Name}}</td><td>{{range .Values}}<code>{{.}}</code>{{end}}</td></tr>{{end}}
+          </tbody></table></div>
+          {{else}}
+          <p class="empty">No common proxy headers were present. A Kubernetes <code>LoadBalancer</code> Service is commonly layer 4 and may not add HTTP headers; an Ingress or Gateway usually does.</p>
+          {{end}}
+        </div>
+        <div class="card span-6">
+          <h3>TLS at the pod</h3>
+          {{if .Request.TLS.Enabled}}
+          <dl class="facts">
+            <dt>Version</dt><dd>{{.Request.TLS.Version}}</dd>
+            <dt>Cipher</dt><dd><code>{{.Request.TLS.CipherSuite}}</code></dd>
+            <dt>Server name</dt><dd><code>{{.Request.TLS.ServerName}}</code></dd>
+            <dt>Application protocol</dt><dd><code>{{.Request.TLS.NegotiatedProtocol}}</code></dd>
+            <dt>Client certificates</dt><dd>{{.Request.TLS.PeerCertificateCount}}</dd>
+          </dl>
+          {{else}}
+          <p class="empty">The pod received plain HTTP. TLS may have terminated upstream; inspect <code>Forwarded</code> or <code>X-Forwarded-Proto</code> for the proxy's claim.</p>
+          {{end}}
+        </div>
+
+        <div class="card span-12">
+          <h3>All request headers</h3>
+          {{if .Request.Headers}}
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Every value</th></tr></thead><tbody>
+          {{range .Request.Headers}}<tr><td>{{.Name}}</td><td>{{range .Values}}<code>{{.}}</code>{{end}}</td></tr>{{end}}
+          </tbody></table></div>
+          {{else}}<p class="empty">No request headers were exposed by the HTTP parser.</p>{{end}}
+        </div>
+
+        <div class="card span-6">
+          <h3>Query parameters</h3>
+          {{if .Request.Query}}
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Every value</th></tr></thead><tbody>
+          {{range .Request.Query}}<tr><td>{{.Name}}</td><td>{{range .Values}}<code>{{.}}</code>{{end}}</td></tr>{{end}}
+          </tbody></table></div>
+          {{else}}<p class="empty">This request has no query parameters.</p>{{end}}
+        </div>
+        <div class="card span-6">
+          <h3>Body preview</h3>
+          {{if .Request.BodyPreview}}
+          <pre>{{.Request.BodyPreview}}</pre>
+          <p class="empty">{{.Request.BodyPreviewBytes}} bytes shown as {{.Request.BodyPreviewEncoding}}{{if .Request.BodyTruncated}}; truncated at {{.Request.BodyPreviewLimit}} bytes{{end}}.</p>
+          {{else}}<p class="empty">This request has no body. Send a POST, PUT, or PATCH directly to <code>/</code> or <code>/api/request</code> to inspect one.</p>{{end}}
+        </div>
+
+        {{if .Request.Trailers}}
+        <div class="card span-12">
+          <h3>Request trailers</h3>
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Every value</th></tr></thead><tbody>
+          {{range .Request.Trailers}}<tr><td>{{.Name}}</td><td>{{range .Values}}<code>{{.}}</code>{{end}}</td></tr>{{end}}
+          </tbody></table></div>
+          <p class="empty">Trailer collection {{if .Request.TrailersComplete}}completed with the body{{else}}may be incomplete because only the bounded body preview was read{{end}}.</p>
+        </div>
+        {{end}}
+
+        <div class="card span-12 stack">
+          <div class="toolbar" style="margin-top:0; justify-content:space-between"><h3 style="margin:0">Reconstructed request</h3><button class="button" id="copy-raw" type="button">Copy</button></div>
+          <pre id="raw-request">{{.Request.RawRequest}}</pre>
+          <p class="empty">Header casing/order, HTTP/2 pseudo-headers, stripped fields, and exact pre-proxy wire bytes are not recoverable through Go's parsed request object.</p>
+        </div>
+        {{if .Request.CollectionErrors}}<div class="card span-12"><h3>Request collection notices</h3>{{range .Request.CollectionErrors}}<p class="empty">{{.}}</p>{{end}}</div>{{end}}
+      </div>
+    </section>
+
+    <section class="section" id="port-checker">
+      <div class="section-head"><div><h2>Port checker</h2><p>Probe one port, a list, ranges, or every port from the pod's network namespace.</p></div><span class="badge">demo listeners <strong>5060 · 5061</strong></span></div>
+      <div class="section-body stack">
+        <form id="port-form" class="form-grid">
+          <label>Target<input name="target" value="{{.DefaultTarget}}" maxlength="253" placeholder="self or service.namespace.svc"></label>
+          <label>Ports<input name="ports" value="5060-5061" maxlength="512" placeholder="80,443,5000-5010 or all"></label>
+          <label>Protocol<select name="protocol"><option value="tcp" selected>TCP</option><option value="udp">UDP</option><option value="both">TCP + UDP</option></select></label>
+          <label>Timeout / port<input name="timeout" type="number" min="1" max="5000" value="500"></label>
+          <button class="button primary" id="scan-button" type="submit">Run check</button>
+        </form>
+        <p class="warning"><strong>Safety boundary:</strong> self, loopback, and this pod's own IPs are allowed by default. Add exact hosts/IPs/CIDRs with <code>PORT_CHECK_ALLOWED_TARGETS</code>; use <code>*</code> only in an isolated demo. Every scan stops after 20 seconds; full scans retain open/responding rows only. UDP is shown as “responded” only when a datagram comes back—silence is unknown, not proof of a closed port.</p>
+        <div id="scan-summary" class="scan-summary" role="status" aria-live="polite"></div>
+        <div id="scan-results" class="table-wrap" hidden><table><thead><tr><th>Port</th><th>Protocol</th><th>Status</th><th>Latency</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><div><h2>Pod &amp; runtime</h2><p>Safe, allowlisted Downward API fields and process details—never a dump of secret-bearing environment variables or service-account tokens.</p></div><span class="badge">uptime <strong>{{.Runtime.Uptime}}</strong></span></div>
+      <div class="section-body grid">
+        <div class="card span-4">
+          <h3>Kubernetes identity</h3>
+          <dl class="facts">
+            <dt>Pod</dt><dd><code>{{if .Runtime.Kubernetes.PodName}}{{.Runtime.Kubernetes.PodName}}{{else}}not injected{{end}}</code></dd>
+            <dt>Container</dt><dd><code>{{if .Runtime.Kubernetes.ContainerName}}{{.Runtime.Kubernetes.ContainerName}}{{else}}not injected{{end}}</code></dd>
+            <dt>Namespace</dt><dd><code>{{if .Runtime.Kubernetes.PodNamespace}}{{.Runtime.Kubernetes.PodNamespace}}{{else}}not injected{{end}}</code></dd>
+            <dt>Pod UID</dt><dd><code>{{if .Runtime.Kubernetes.PodUID}}{{.Runtime.Kubernetes.PodUID}}{{else}}not injected{{end}}</code></dd>
+            <dt>Pod IP</dt><dd><code>{{if .Runtime.Kubernetes.PodIP}}{{.Runtime.Kubernetes.PodIP}}{{else}}not injected{{end}}</code></dd>
+            <dt>Host IP</dt><dd><code>{{if .Runtime.Kubernetes.HostIP}}{{.Runtime.Kubernetes.HostIP}}{{else}}not injected{{end}}</code></dd>
+            <dt>Node</dt><dd><code>{{if .Runtime.Kubernetes.NodeName}}{{.Runtime.Kubernetes.NodeName}}{{else}}not injected{{end}}</code></dd>
+            <dt>Service account</dt><dd><code>{{if .Runtime.Kubernetes.ServiceAccount}}{{.Runtime.Kubernetes.ServiceAccount}}{{else}}not injected{{end}}</code></dd>
+          </dl>
+        </div>
+        <div class="card span-4">
+          <h3>Build &amp; process</h3>
+          <dl class="facts">
+            <dt>Release</dt><dd><code>{{.Runtime.Build.Release}}</code></dd>
+            <dt>Commit</dt><dd><code>{{.Runtime.Build.Commit}}</code></dd>
+            <dt>Build time</dt><dd><code>{{.Runtime.Build.BuildTime}}</code></dd>
+            <dt>Image</dt><dd><code>{{if .Runtime.Build.Image}}{{.Runtime.Build.Image}}{{else}}not injected{{end}}</code></dd>
+            <dt>Hostname</dt><dd><code>{{.Runtime.Hostname}}</code></dd>
+            <dt>Go</dt><dd><code>{{.Runtime.GoVersion}}</code></dd>
+            <dt>Platform</dt><dd><code>{{.Runtime.OS}}/{{.Runtime.Arch}}</code></dd>
+            <dt>PID · UID · GID</dt><dd><code>{{.Runtime.PID}} · {{.Runtime.UID}} · {{.Runtime.GID}}</code></dd>
+            <dt>Process started</dt><dd><code>{{.Runtime.ProcessStartedAt.Format "2006-01-02 15:04:05 UTC"}}</code></dd>
+            <dt>CPUs · goroutines</dt><dd><code>{{.Runtime.CPUs}} · {{.Runtime.Goroutines}}</code></dd>
+          </dl>
+        </div>
+        <div class="card span-4">
+          <h3>Resources &amp; memory</h3>
+          <dl class="facts">
+            <dt>CPU request</dt><dd><code>{{if .Runtime.Kubernetes.Resources.CPURequestMillicores}}{{.Runtime.Kubernetes.Resources.CPURequestMillicores}}m{{else}}not injected{{end}}</code></dd>
+            <dt>CPU limit</dt><dd><code>{{if .Runtime.Kubernetes.Resources.CPULimitMillicores}}{{.Runtime.Kubernetes.Resources.CPULimitMillicores}}m{{else}}not injected{{end}}</code></dd>
+            <dt>Memory request</dt><dd><code>{{if .Runtime.Kubernetes.Resources.MemoryRequestBytes}}{{.Runtime.Kubernetes.Resources.MemoryRequestBytes}} B{{else}}not injected{{end}}</code></dd>
+            <dt>Memory limit</dt><dd><code>{{if .Runtime.Kubernetes.Resources.MemoryLimitBytes}}{{.Runtime.Kubernetes.Resources.MemoryLimitBytes}} B{{else}}not injected{{end}}</code></dd>
+            <dt>Heap allocated</dt><dd><code>{{formatBytes .Runtime.Memory.HeapAllocBytes}}</code></dd>
+            <dt>Runtime sys</dt><dd><code>{{formatBytes .Runtime.Memory.SysBytes}}</code></dd>
+            <dt>Heap objects</dt><dd><code>{{.Runtime.Memory.HeapObjects}}</code></dd>
+            <dt>GC cycles</dt><dd><code>{{.Runtime.Memory.NumGC}}</code></dd>
+          </dl>
+        </div>
+        <div class="card span-5">
+          <h3>Addresses</h3>
+          <dl class="facts">
+            <dt>Preferred outbound</dt><dd><code>{{if .Runtime.OutboundIP}}{{.Runtime.OutboundIP}}{{else}}unavailable{{end}}</code></dd>
+            <dt>Local IPs</dt><dd>{{range .Runtime.LocalIPs}}<code>{{.}}</code>{{else}}none discovered{{end}}</dd>
+          </dl>
+        </div>
+        <div class="card span-7">
+          <h3>Network interfaces</h3>
+          <div class="interface-list">
+          {{range .Runtime.Interfaces}}
+            <div class="interface"><strong>{{.Name}}</strong> <span class="mono">mtu {{.MTU}}</span><small>{{.Flags}}{{if .HardwareAddress}} · {{.HardwareAddress}}{{end}}</small><small>{{if .Addresses}}{{join .Addresses " · "}}{{else}}no addresses{{end}}</small></div>
+          {{else}}<p class="empty">No interfaces could be enumerated.</p>{{end}}
+          </div>
+        </div>
+        {{if .Runtime.CollectionErrors}}<div class="card span-12"><h3>Collection notices</h3>{{range .Runtime.CollectionErrors}}<p class="empty">{{.}}</p>{{end}}</div>{{end}}
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell">simpleapp · request data is generated per response and never cached</footer>
+
+  <script>
+    (() => {
+      const copyButton = document.getElementById('copy-raw');
+      copyButton.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(document.getElementById('raw-request').textContent);
+          copyButton.textContent = 'Copied';
+          setTimeout(() => { copyButton.textContent = 'Copy'; }, 1200);
+        } catch (_) {
+          copyButton.textContent = 'Copy unavailable';
+        }
+      });
+
+      const form = document.getElementById('port-form');
+      const button = document.getElementById('scan-button');
+      const summary = document.getElementById('scan-summary');
+      const results = document.getElementById('scan-results');
+      const tbody = results.querySelector('tbody');
+      const allowedStatusClasses = new Set(['open', 'responded', 'closed', 'timeout', 'unknown', 'error', 'unreachable', 'cancelled']);
+
+      function showSummary(message) {
+        summary.textContent = message;
+        summary.classList.add('visible');
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        button.disabled = true;
+        button.textContent = 'Checking…';
+        results.hidden = true;
+        tbody.replaceChildren();
+        showSummary('Starting bounded scan…');
+
+        const fields = new FormData(form);
+        const payload = {
+          target: String(fields.get('target') || ''),
+          ports: String(fields.get('ports') || ''),
+          protocol: String(fields.get('protocol') || ''),
+          timeout_ms: Number(fields.get('timeout') || 500)
+        };
+
+        try {
+          const response = await fetch('/api/port-check', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+            body: JSON.stringify(payload)
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || `request failed (${response.status})`);
+
+          const counts = Object.entries(data.status_counts || {}).sort().map(([name, value]) => `${name}: ${value}`).join(' · ') || 'no completed probes';
+          const qualifier = data.partial ? 'partial' : 'complete';
+          showSummary(`${qualifier} scan of ${data.resolved_target}: ${data.completed}/${data.total} probes in ${data.timing.duration_ms} ms · ${counts}`);
+
+          for (const item of (data.results || [])) {
+            const row = document.createElement('tr');
+            const values = [item.port, item.protocol, item.status, `${item.duration_ms} ms`, item.detail || '—'];
+            values.forEach((value, index) => {
+              const cell = document.createElement('td');
+              cell.textContent = String(value);
+              if (index === 2) {
+                cell.classList.add('status');
+                if (allowedStatusClasses.has(item.status)) cell.classList.add(`status-${item.status}`);
+              }
+              row.appendChild(cell);
+            });
+            tbody.appendChild(row);
+          }
+          if ((data.results || []).length === 0) {
+            const row = document.createElement('tr');
+            const cell = document.createElement('td');
+            cell.colSpan = 5;
+            cell.textContent = data.all_ports
+              ? (data.partial ? 'No open/responding ports were retained among the completed probes; this full scan stopped at its deadline.' : 'No open/responding ports found; full scans return actionable results only.')
+              : 'No result rows were retained.';
+            row.appendChild(cell);
+            tbody.appendChild(row);
+          }
+          results.hidden = false;
+        } catch (error) {
+          showSummary(`Port check failed: ${error.message}`);
+        } finally {
+          button.disabled = false;
+          button.textContent = 'Run check';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
