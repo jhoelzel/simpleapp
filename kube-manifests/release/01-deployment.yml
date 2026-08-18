@@ -28,7 +28,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: simpleapp
-        image: ghcr.io/jhoelzel/simpleapp:0.0.4
+        image: ghcr.io/jhoelzel/webrequesttest:0.0.4
         imagePullPolicy: IfNotPresent
         securityContext:
           allowPrivilegeEscalation: false
@@ -51,7 +51,7 @@ spec:
           protocol: TCP
         env:
         - name: BUILD_IMAGE
-          value: "ghcr.io/jhoelzel/simpleapp:0.0.4"
+          value: "ghcr.io/jhoelzel/webrequesttest:0.0.4"
         - name: CONTAINER_NAME
           value: "simpleapp"
         - name: POD_NAME

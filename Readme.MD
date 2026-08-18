@@ -23,7 +23,7 @@ docker run --rm --name simpleapp \
   -p 5060:5060/tcp \
   -p 5060:5060/udp \
   -p 5061:5061/tcp \
-  ghcr.io/jhoelzel/simpleapp:0.0.4
+  ghcr.io/jhoelzel/webrequesttest:0.0.4
 ```
 
 ## What the dashboard shows
