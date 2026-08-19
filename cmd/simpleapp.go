@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jhoelzel/simpleapp/pkg/router"
+	"github.com/jhoelzel/simpleapp/pkg/telemetry"
 	"github.com/jhoelzel/simpleapp/pkg/version"
 )
 
@@ -36,11 +37,22 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	tracing := telemetry.Initialize(ctx, version.Release)
+	tracingStatus := tracing.Status()
+	log.Printf(
+		"tracing state=%s exporter=%s service=%s endpoint_configured=%t insecure=%t public_endpoint=%t",
+		tracingStatus.State,
+		tracingStatus.Exporter,
+		tracingStatus.ServiceName,
+		tracingStatus.EndpointConfigured,
+		tracingStatus.Insecure,
+		tracingStatus.PublicEndpoint,
+	)
 
 	httpPort := configuredPort("PORT", defaultHTTPPort)
 	srv := &http.Server{
 		Addr:              net.JoinHostPort("", strconv.Itoa(httpPort)),
-		Handler:           router.Get(version.Release),
+		Handler:           router.Get(version.Release, tracing.Middleware()),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -68,6 +80,11 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("HTTP shutdown did not complete cleanly: %v", err)
+	}
+	tracingShutdownCtx, tracingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer tracingCancel()
+	if err := tracing.Shutdown(tracingShutdownCtx); err != nil {
+		log.Printf("tracing shutdown did not complete cleanly")
 	}
 	log.Print("simpleapp stopped")
 }

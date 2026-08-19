@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/jhoelzel/simpleapp/pkg/telemetry"
 )
 
 type responseRecorder struct {
@@ -91,10 +93,12 @@ func accessLogMiddleware(release string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			started := time.Now()
+			traceContext := telemetry.CurrentTrace(r.Context())
 			requestID := safeRequestID(r.Header.Get("X-Request-ID"))
 			if requestID == "" {
 				requestID = newRequestID()
 			}
+			telemetry.SetRequestID(r.Context(), requestID)
 
 			w.Header().Set("X-Request-ID", requestID)
 			w.Header().Set("X-Simpleapp-Pod", hostname)
@@ -107,8 +111,11 @@ func accessLogMiddleware(release string) func(http.Handler) http.Handler {
 			}
 
 			log.Printf(
-				"request_id=%q method=%q path=%q proto=%q peer=%q status=%d bytes=%d duration=%s",
+				"request_id=%q trace_id=%q span_id=%q sampled=%t method=%q path=%q proto=%q peer=%q status=%d bytes=%d duration=%s",
 				requestID,
+				traceContext.TraceID,
+				traceContext.SpanID,
+				traceContext.Sampled,
 				r.Method,
 				r.URL.Path,
 				r.Proto,

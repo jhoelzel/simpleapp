@@ -8,6 +8,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestAccessLogMiddlewareAddsDiagnosticHeadersWithoutLoggingSecrets(t *testing.T) {
@@ -43,6 +46,53 @@ func TestAccessLogMiddlewareAddsDiagnosticHeadersWithoutLoggingSecrets(t *testin
 		if !strings.Contains(logs.String(), want) {
 			t.Errorf("access log %q does not contain %q", logs.String(), want)
 		}
+	}
+}
+
+func TestAccessLogMiddlewareCorrelatesActiveTrace(t *testing.T) {
+	var logs bytes.Buffer
+	previousOutput := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(previousOutput) })
+
+	spanRecorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithSpanProcessor(spanRecorder),
+	)
+	t.Cleanup(func() { _ = provider.Shutdown(t.Context()) })
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/traced", nil)
+	req.Header.Set("X-Request-ID", "trace-request-123")
+	ctx, span := provider.Tracer("router-test").Start(req.Context(), "server")
+	req = req.WithContext(ctx)
+
+	handler := accessLogMiddleware("test")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	span.End()
+
+	for _, want := range []string{
+		`trace_id="` + span.SpanContext().TraceID().String() + `"`,
+		`span_id="` + span.SpanContext().SpanID().String() + `"`,
+		"sampled=true",
+	} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("access log %q does not contain %q", logs.String(), want)
+		}
+	}
+	spans := spanRecorder.Ended()
+	if len(spans) != 1 {
+		t.Fatalf("ended spans = %d, want 1", len(spans))
+	}
+	foundRequestID := false
+	for _, item := range spans[0].Attributes() {
+		if string(item.Key) == "request.id" && item.Value.AsString() == "trace-request-123" {
+			foundRequestID = true
+		}
+	}
+	if !foundRequestID {
+		t.Fatal("active span is missing the validated request.id attribute")
 	}
 }
 

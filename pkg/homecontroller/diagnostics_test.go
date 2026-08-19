@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"io"
 	"net"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/jhoelzel/simpleapp/pkg/version"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func TestCollectRequestDetails(t *testing.T) {
@@ -49,6 +51,9 @@ func TestCollectRequestDetails(t *testing.T) {
 	req.Header["X-Multi"] = []string{"first", "second"}
 	req.Header["X-Forwarded-For"] = []string{"198.51.100.20, 10.0.0.3"}
 	req.Header["X-Forwarded-Proto"] = []string{"https"}
+	req.Header["Traceparent"] = []string{"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}
+	req.Header["Tracestate"] = []string{"vendor=opaque-secret"}
+	req.Header["Baggage"] = []string{"account=customer-secret"}
 	req.Trailer = http.Header{
 		"Authorization": []string{"trailer-secret"},
 		"X-Trailer":     []string{"trailer-value"},
@@ -96,11 +101,17 @@ func TestCollectRequestDetails(t *testing.T) {
 	assertDiagnosticValues(t, details.Headers, "Cf-Access-Jwt-Assertion", []string{redactedDiagnosticValue})
 	assertDiagnosticValues(t, details.Headers, "X-Goog-Iap-Jwt-Assertion", []string{redactedDiagnosticValue})
 	assertDiagnosticValues(t, details.Headers, "X-Amzn-Oidc-Data", []string{redactedDiagnosticValue})
+	assertDiagnosticValues(t, details.Headers, "Traceparent", []string{"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"})
+	assertDiagnosticValues(t, details.Headers, "Tracestate", []string{redactedDiagnosticValue})
+	assertDiagnosticValues(t, details.Headers, "Baggage", []string{redactedDiagnosticValue})
 	assertDiagnosticValues(t, details.Headers, "X-Multi", []string{"first", "second"})
 	assertDiagnosticValues(t, details.Query, "a", []string{"2", "1"})
 	assertDiagnosticValues(t, details.Query, "token", []string{redactedDiagnosticValue})
 	assertDiagnosticValues(t, details.Trailers, "Authorization", []string{redactedDiagnosticValue})
 	assertDiagnosticValues(t, details.LoadBalancerHeaders, "X-Forwarded-For", []string{"198.51.100.20, 10.0.0.3"})
+	assertDiagnosticValues(t, details.LoadBalancerHeaders, "Traceparent", []string{"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"})
+	assertDiagnosticValues(t, details.LoadBalancerHeaders, "Tracestate", []string{redactedDiagnosticValue})
+	assertDiagnosticValues(t, details.LoadBalancerHeaders, "Baggage", []string{redactedDiagnosticValue})
 	if details.RawQuery != "z=last&token=%5BREDACTED%5D&a=2&a=1" {
 		t.Fatalf("redaction did not preserve safe query ordering/encoding: %q", details.RawQuery)
 	}
@@ -110,7 +121,7 @@ func TestCollectRequestDetails(t *testing.T) {
 			t.Fatalf("sensitive query value leaked in %q", value)
 		}
 	}
-	if strings.Contains(details.RawRequest, "request-secret") || strings.Contains(details.RawRequest, "cookie-secret") || strings.Contains(details.RawRequest, "assertion-secret") {
+	if strings.Contains(details.RawRequest, "request-secret") || strings.Contains(details.RawRequest, "cookie-secret") || strings.Contains(details.RawRequest, "assertion-secret") || strings.Contains(details.RawRequest, "opaque-secret") || strings.Contains(details.RawRequest, "customer-secret") {
 		t.Fatalf("credential header leaked in raw request: %q", details.RawRequest)
 	}
 	if strings.Contains(details.RawRequest, body) {
@@ -123,6 +134,22 @@ func TestCollectRequestDetails(t *testing.T) {
 	}
 	if string(restored) != body {
 		t.Fatalf("restored body = %q, want %q", restored, body)
+	}
+}
+
+func TestCollectRequestDetailsIncludesActiveTraceContext(t *testing.T) {
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	ctx, span := provider.Tracer("diagnostics-test").Start(context.Background(), "request")
+	defer span.End()
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/", nil).WithContext(ctx)
+
+	details := CollectRequestDetails(req)
+	if !details.Trace.Active || !details.Trace.Recording || !details.Trace.Sampled {
+		t.Fatalf("trace context = %#v", details.Trace)
+	}
+	if details.Trace.TraceID != span.SpanContext().TraceID().String() || details.Trace.SpanID != span.SpanContext().SpanID().String() {
+		t.Fatalf("trace identifiers = %#v, want %s/%s", details.Trace, span.SpanContext().TraceID(), span.SpanContext().SpanID())
 	}
 }
 
@@ -301,6 +328,9 @@ func TestCollectRuntimeDetails(t *testing.T) {
 	if details.Memory.SysBytes == 0 {
 		t.Fatalf("runtime memory details were not collected: %#v", details.Memory)
 	}
+	if details.Tracing.State != "disabled" || details.Tracing.Enabled {
+		t.Fatalf("default tracing status = %#v", details.Tracing)
+	}
 	if details.Kubernetes.PodName != "simpleapp-abc" || details.Kubernetes.PodNamespace != "demo" || details.Kubernetes.PodIP != "10.42.0.17" || details.Kubernetes.HostIP != "192.0.2.50" || details.Kubernetes.NodeName != "worker-1" || details.Kubernetes.ServiceAccount != "simpleapp" {
 		t.Fatalf("Kubernetes fields = %#v", details.Kubernetes)
 	}
@@ -322,6 +352,30 @@ func TestCollectRuntimeDetails(t *testing.T) {
 	}
 	if _, err := json.Marshal(details); err != nil {
 		t.Fatalf("marshal runtime details: %v", err)
+	}
+}
+
+func TestCollectRuntimeDetailsHonorsCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := preferredOutboundIP(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("preferred outbound IP error = %v, want context.Canceled", err)
+	}
+
+	details := CollectRuntimeDetailsContext(ctx)
+	if details.OutboundIP != "" {
+		t.Fatalf("canceled runtime collection discovered outbound IP %q", details.OutboundIP)
+	}
+	foundCancellation := false
+	for _, collectionErr := range details.CollectionErrors {
+		if strings.HasPrefix(collectionErr, "outbound IP:") && strings.Contains(strings.ToLower(collectionErr), "cancel") {
+			foundCancellation = true
+			break
+		}
+	}
+	if !foundCancellation {
+		t.Fatalf("canceled runtime collection errors = %v", details.CollectionErrors)
 	}
 }
 
@@ -362,6 +416,8 @@ func TestSensitiveDiagnosticNames(t *testing.T) {
 		"client_secret":            true,
 		"access_token":             true,
 		"password":                 true,
+		"Baggage":                  true,
+		"Tracestate":               true,
 		"X-Request-ID":             false,
 		"secretIp":                 false,
 		"monkey":                   false,

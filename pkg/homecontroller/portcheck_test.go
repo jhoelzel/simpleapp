@@ -15,6 +15,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 type recordingResolver struct {
@@ -348,13 +351,23 @@ func TestPortCheckEndpointTCPResponse(t *testing.T) {
 
 func TestPortCheckAllResponseIsCompact(t *testing.T) {
 	clearPortCheckTargetEnvironment(t)
+	spanRecorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithSpanProcessor(spanRecorder),
+	)
+	t.Cleanup(func() {
+		_ = provider.Shutdown(context.Background())
+	})
+	parentContext, parentSpan := provider.Tracer("portcheck-test").Start(context.Background(), "http.server")
+	defer parentSpan.End()
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/port-check",
 		bytes.NewBufferString(`{"target":"self","ports":"all","protocol":"tcp","timeout_ms":10}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
-	ctx, cancel := context.WithCancel(request.Context())
+	ctx, cancel := context.WithCancel(parentContext)
 	cancel()
 	request = request.WithContext(ctx)
 	recorder := httptest.NewRecorder()
@@ -379,6 +392,10 @@ func TestPortCheckAllResponseIsCompact(t *testing.T) {
 	}
 	if !response.Partial || !response.Cancelled {
 		t.Fatalf("cancelled scan should be partial and cancelled: %#v", response)
+	}
+	spans := spanRecorder.Ended()
+	if len(spans) != 1 || spans[0].Name() != "portcheck.scan" {
+		t.Fatalf("full scan emitted %d completed spans, want one aggregate portcheck.scan span", len(spans))
 	}
 }
 

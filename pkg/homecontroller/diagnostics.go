@@ -19,6 +19,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jhoelzel/simpleapp/pkg/telemetry"
 	"github.com/jhoelzel/simpleapp/pkg/version"
 )
 
@@ -75,35 +76,36 @@ type TLSDetails struct {
 // visible to net/http after any load balancer or reverse proxy has processed it.
 // Header and query credentials are redacted unless SHOW_SENSITIVE_DATA=true.
 type RequestDetails struct {
-	CollectedAt         time.Time          `json:"collectedAt"`
-	Method              string             `json:"method"`
-	Scheme              string             `json:"scheme"`
-	Proto               string             `json:"proto"`
-	Host                string             `json:"host"`
-	RequestURI          string             `json:"requestURI"`
-	Path                string             `json:"path"`
-	RawQuery            string             `json:"rawQuery"`
-	RemoteAddr          string             `json:"remoteAddr"`
-	LocalAddr           string             `json:"localAddr"`
-	RemoteSocket        SocketAddress      `json:"remoteSocket"`
-	LocalSocket         SocketAddress      `json:"localSocket"`
-	ReportedClient      ClientClaim        `json:"reportedClient"`
-	ContentLength       int64              `json:"contentLength"`
-	TransferEncoding    []string           `json:"transferEncoding"`
-	Headers             []DiagnosticValues `json:"headers"`
-	Query               []DiagnosticValues `json:"query"`
-	Trailers            []DiagnosticValues `json:"trailers"`
-	TrailersComplete    bool               `json:"trailersComplete"`
-	LoadBalancerHeaders []DiagnosticValues `json:"loadBalancerHeaders"`
-	BodyPreview         string             `json:"bodyPreview"`
-	BodyPreviewEncoding string             `json:"bodyPreviewEncoding"`
-	BodyPreviewBytes    int                `json:"bodyPreviewBytes"`
-	BodyPreviewLimit    int                `json:"bodyPreviewLimit"`
-	BodyTruncated       bool               `json:"bodyTruncated"`
-	TLS                 TLSDetails         `json:"tls"`
-	RawRequest          string             `json:"rawRequest"`
-	SensitiveDataShown  bool               `json:"sensitiveDataShown"`
-	CollectionErrors    []string           `json:"collectionErrors,omitempty"`
+	CollectedAt         time.Time              `json:"collectedAt"`
+	Method              string                 `json:"method"`
+	Scheme              string                 `json:"scheme"`
+	Proto               string                 `json:"proto"`
+	Host                string                 `json:"host"`
+	RequestURI          string                 `json:"requestURI"`
+	Path                string                 `json:"path"`
+	RawQuery            string                 `json:"rawQuery"`
+	RemoteAddr          string                 `json:"remoteAddr"`
+	LocalAddr           string                 `json:"localAddr"`
+	RemoteSocket        SocketAddress          `json:"remoteSocket"`
+	LocalSocket         SocketAddress          `json:"localSocket"`
+	ReportedClient      ClientClaim            `json:"reportedClient"`
+	ContentLength       int64                  `json:"contentLength"`
+	TransferEncoding    []string               `json:"transferEncoding"`
+	Headers             []DiagnosticValues     `json:"headers"`
+	Query               []DiagnosticValues     `json:"query"`
+	Trailers            []DiagnosticValues     `json:"trailers"`
+	TrailersComplete    bool                   `json:"trailersComplete"`
+	LoadBalancerHeaders []DiagnosticValues     `json:"loadBalancerHeaders"`
+	BodyPreview         string                 `json:"bodyPreview"`
+	BodyPreviewEncoding string                 `json:"bodyPreviewEncoding"`
+	BodyPreviewBytes    int                    `json:"bodyPreviewBytes"`
+	BodyPreviewLimit    int                    `json:"bodyPreviewLimit"`
+	BodyTruncated       bool                   `json:"bodyTruncated"`
+	TLS                 TLSDetails             `json:"tls"`
+	Trace               telemetry.TraceContext `json:"trace"`
+	RawRequest          string                 `json:"rawRequest"`
+	SensitiveDataShown  bool                   `json:"sensitiveDataShown"`
+	CollectionErrors    []string               `json:"collectionErrors,omitempty"`
 }
 
 // BuildDetails is the build metadata embedded by the project's linker flags.
@@ -179,6 +181,7 @@ type RuntimeDetails struct {
 	Goroutines       int                       `json:"goroutines"`
 	CPUs             int                       `json:"cpus"`
 	Memory           MemoryDetails             `json:"memory"`
+	Tracing          telemetry.Status          `json:"tracing"`
 	Kubernetes       KubernetesDetails         `json:"kubernetes"`
 	Interfaces       []NetworkInterfaceDetails `json:"interfaces"`
 	LocalIPs         []string                  `json:"localIPs"`
@@ -209,6 +212,7 @@ func CollectRequestDetails(r *http.Request) RequestDetails {
 	}
 
 	details.Method = r.Method
+	details.Trace = telemetry.CurrentTrace(r.Context())
 	details.Proto = r.Proto
 	details.Host = r.Host
 	details.RemoteAddr = r.RemoteAddr
@@ -268,6 +272,16 @@ func CollectRequestDetails(r *http.Request) RequestDetails {
 // contacting an external HTTP service and without terminating the process when
 // discovery is unavailable.
 func CollectRuntimeDetails() RuntimeDetails {
+	return CollectRuntimeDetailsContext(context.Background())
+}
+
+// CollectRuntimeDetailsContext is the request-aware variant. Cancellation is
+// propagated into network discovery so a disconnected client does not leave
+// diagnostic work running.
+func CollectRuntimeDetailsContext(requestContext context.Context) RuntimeDetails {
+	if requestContext == nil {
+		requestContext = context.Background()
+	}
 	collectedAt := time.Now()
 	now := collectedAt.UTC()
 	startedAt := diagnosticProcessStartedAt.UTC()
@@ -306,6 +320,7 @@ func CollectRuntimeDetails() RuntimeDetails {
 			HeapObjects:     mem.HeapObjects,
 			NumGC:           mem.NumGC,
 		},
+		Tracing: telemetry.CurrentStatus(requestContext),
 		Kubernetes: KubernetesDetails{
 			PodName:        firstEnvironmentValue("POD_NAME", "K8S_POD_NAME"),
 			PodNamespace:   firstEnvironmentValue("POD_NAMESPACE", "K8S_POD_NAMESPACE"),
@@ -342,7 +357,7 @@ func CollectRuntimeDetails() RuntimeDetails {
 	details.LocalIPs = localIPs
 	details.CollectionErrors = append(details.CollectionErrors, interfaceErrors...)
 
-	outboundIP, err := preferredOutboundIP()
+	outboundIP, err := preferredOutboundIP(requestContext)
 	if err != nil {
 		details.CollectionErrors = append(details.CollectionErrors, "outbound IP: "+err.Error())
 	} else {
@@ -489,7 +504,7 @@ func isSensitiveDiagnosticName(name string) bool {
 		"xamzcredential", "xamzsignature", "xamzsecuritytoken", "xgoogcredential", "xgoogsignature",
 		"xforwardedclientcert", "xsslclientcert", "sslclientcert", "xclientcert", "xclientcertificate",
 		"cfaccessjwtassertion", "xgoogiapjwtassertion", "xamznoidcdata", "xamznoidcaccesstoken",
-		"samlrequest", "samlresponse":
+		"samlrequest", "samlresponse", "baggage", "tracestate":
 		return true
 	}
 
@@ -639,10 +654,11 @@ func isLoadBalancerHeader(name string) bool {
 	lower := strings.ToLower(name)
 	switch lower {
 	case "forwarded", "via", "x-real-ip", "true-client-ip", "fastly-client-ip", "fly-client-ip",
-		"cf-connecting-ip", "cf-connecting-ipv6", "cf-ray", "x-request-id", "x-correlation-id":
+		"cf-connecting-ip", "cf-connecting-ipv6", "cf-ray", "x-request-id", "x-correlation-id",
+		"traceparent", "tracestate", "baggage", "b3":
 		return true
 	}
-	for _, prefix := range []string{"x-forwarded-", "x-original-", "x-envoy-", "x-amzn-", "x-azure-", "x-vercel-"} {
+	for _, prefix := range []string{"x-forwarded-", "x-original-", "x-envoy-", "x-amzn-", "x-azure-", "x-vercel-", "x-b3-"} {
 		if strings.HasPrefix(lower, prefix) {
 			return true
 		}
@@ -779,9 +795,15 @@ func ipFromAddress(address string) net.IP {
 // preferredOutboundIP asks the kernel which local address it would use for an
 // IPv4 UDP route. Dialing UDP does not send application data; the connection is
 // immediately closed. Failure is returned as diagnostics rather than fatal.
-func preferredOutboundIP() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+func preferredOutboundIP(parent context.Context) (string, error) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 250*time.Millisecond)
 	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	dialer := net.Dialer{}
 	connection, err := dialer.DialContext(ctx, "udp4", "8.8.8.8:80")
 	if err != nil {

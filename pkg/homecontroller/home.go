@@ -38,7 +38,7 @@ type diagnosticEnvelope struct {
 
 func homeEndpoint(w http.ResponseWriter, r *http.Request) {
 	requestDetails := CollectRequestDetails(r)
-	runtimeDetails := CollectRuntimeDetails()
+	runtimeDetails := CollectRuntimeDetailsContext(r.Context())
 
 	if wantsJSON(r) {
 		writeDiagnosticsJSON(w, r, requestDetails, runtimeDetails)
@@ -66,7 +66,7 @@ func homeEndpoint(w http.ResponseWriter, r *http.Request) {
 
 func requestDetailsEndpoint(w http.ResponseWriter, r *http.Request) {
 	requestDetails := CollectRequestDetails(r)
-	runtimeDetails := CollectRuntimeDetails()
+	runtimeDetails := CollectRuntimeDetailsContext(r.Context())
 	writeDiagnosticsJSON(w, r, requestDetails, runtimeDetails)
 }
 

@@ -10,6 +10,9 @@ import (
 
 func TestHomeEndpointRendersEscapedDiagnosticDashboard(t *testing.T) {
 	setTestEnvironment(t, "SHOW_SENSITIVE_DATA", "false")
+	setTestEnvironment(t, "OTEL_EXPORTER_OTLP_TRACES_HEADERS", "authorization=otel-header-secret")
+	setTestEnvironment(t, "OTEL_RESOURCE_ATTRIBUTES", "demo.secret=otel-resource-secret")
+	setTestEnvironment(t, "OTEL_EXPORTER_OTLP_TRACES_CLIENT_KEY", "/secret/otel-client-key")
 	req := httptest.NewRequest(http.MethodGet, "http://simpleapp.test/?view=full&token=page-secret", nil)
 	req.RemoteAddr = "192.0.2.10:43210"
 	req.Header.Set("X-Forwarded-For", "198.51.100.9")
@@ -37,6 +40,7 @@ func TestHomeEndpointRendersEscapedDiagnosticDashboard(t *testing.T) {
 		"Kubernetes traffic laboratory",
 		"Incoming request",
 		"Port checker",
+		"OpenTelemetry trace context",
 		"198.51.100.9",
 		"[REDACTED]",
 		"&lt;img src=x onerror=&#34;alert(1)&#34;&gt;",
@@ -46,7 +50,7 @@ func TestHomeEndpointRendersEscapedDiagnosticDashboard(t *testing.T) {
 			t.Errorf("dashboard does not contain %q", want)
 		}
 	}
-	for _, secret := range []string{"page-secret", "header-secret", `<img src=x onerror="alert(1)">`} {
+	for _, secret := range []string{"page-secret", "header-secret", "otel-header-secret", "otel-resource-secret", "otel-client-key", `<img src=x onerror="alert(1)">`} {
 		if strings.Contains(body, secret) {
 			t.Errorf("dashboard leaked unsafe value %q", secret)
 		}
@@ -71,6 +75,9 @@ func TestHomeEndpointCanReturnJSON(t *testing.T) {
 	}
 	if response.Request.Method != http.MethodPost || response.Request.BodyPreview != "demo body" {
 		t.Fatalf("unexpected request snapshot: %#v", response.Request)
+	}
+	if response.Runtime.Tracing.State != "disabled" || response.Request.Trace.Active {
+		t.Fatalf("unexpected default tracing diagnostics: runtime=%#v request=%#v", response.Runtime.Tracing, response.Request.Trace)
 	}
 	if len(response.DemoListeners) != 4 || response.DemoListeners[0] != "18080/tcp (HTTP)" || len(response.Notes) < 3 {
 		t.Fatalf("missing diagnostic metadata: %#v", response)

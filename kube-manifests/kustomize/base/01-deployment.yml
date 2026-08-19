@@ -5,7 +5,7 @@ metadata:
   labels:
     app: simpleapp
     app.kubernetes.io/name: simpleapp
-    app.kubernetes.io/version: "0.0.4"
+    app.kubernetes.io/version: "0.0.5"
 spec:
   replicas: 1
   selector:
@@ -16,7 +16,7 @@ spec:
       labels:
         app: simpleapp
         app.kubernetes.io/name: simpleapp
-        app.kubernetes.io/version: "0.0.4"
+        app.kubernetes.io/version: "0.0.5"
     spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 15
@@ -28,7 +28,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: simpleapp
-        image: ghcr.io/jhoelzel/webrequesttest:0.0.4
+        image: ghcr.io/jhoelzel/webrequesttest:0.0.5
         imagePullPolicy: IfNotPresent
         securityContext:
           allowPrivilegeEscalation: false
@@ -50,8 +50,10 @@ spec:
           containerPort: 5061
           protocol: TCP
         env:
+        - name: SIMPLEAPP_TRACING_ENABLED
+          value: "false"
         - name: BUILD_IMAGE
-          value: "ghcr.io/jhoelzel/webrequesttest:0.0.4"
+          value: "ghcr.io/jhoelzel/webrequesttest:0.0.5"
         - name: CONTAINER_NAME
           value: "simpleapp"
         - name: POD_NAME

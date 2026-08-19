@@ -118,6 +118,7 @@
       <span class="badge">namespace <strong>{{if .Runtime.Kubernetes.PodNamespace}}{{.Runtime.Kubernetes.PodNamespace}}{{else}}local{{end}}</strong></span>
       <span class="badge">release <strong>{{.Runtime.Build.Release}}</strong></span>
       <span class="badge">transport <strong>{{.Request.Scheme}} · {{.Request.Proto}}</strong></span>
+      <span class="badge">tracing <strong>{{if eq .Runtime.Tracing.State "configured"}}OTLP/gRPC{{if .Request.Trace.Active}} · {{if .Request.Trace.Sampled}}sampled{{else}}not sampled{{end}}{{end}}{{else if eq .Runtime.Tracing.State "init_failed"}}initialization failed{{else}}off{{end}}</strong></span>
       <span class="badge">credentials <strong>{{if .Request.SensitiveDataShown}}visible{{else}}redacted{{end}}</strong></span>
     </div>
   </header>
@@ -179,6 +180,31 @@
           </dl>
           {{else}}
           <p class="empty">The pod received plain HTTP. TLS may have terminated upstream; inspect <code>Forwarded</code> or <code>X-Forwarded-Proto</code> for the proxy's claim.</p>
+          {{end}}
+        </div>
+
+        <div class="card span-12">
+          <h3>OpenTelemetry trace context</h3>
+          {{if eq .Runtime.Tracing.State "configured"}}
+          {{if .Request.Trace.Active}}
+          <dl class="facts">
+            <dt>Trace ID</dt><dd><code>{{.Request.Trace.TraceID}}</code></dd>
+            <dt>Server span ID</dt><dd><code>{{.Request.Trace.SpanID}}</code></dd>
+            <dt>Sampled</dt><dd>{{.Request.Trace.Sampled}}</dd>
+            <dt>Recording</dt><dd>{{.Request.Trace.Recording}}</dd>
+            <dt>Exporter</dt><dd><code>{{.Runtime.Tracing.Exporter}}</code></dd>
+            <dt>Service</dt><dd><code>{{.Runtime.Tracing.ServiceName}}</code></dd>
+            <dt>Parent handling</dt><dd>{{if .Runtime.Tracing.PublicEndpoint}}public endpoint — valid incoming context is linked{{else}}trusted proxy — valid incoming context becomes the parent{{end}}</dd>
+            <dt>Transport security</dt><dd>{{if .Runtime.Tracing.Insecure}}plaintext gRPC (no TLS){{else}}TLS{{end}}</dd>
+          </dl>
+          <p class="empty">“Configured” means the asynchronous exporter initialized; it does not claim that the collector is currently reachable.</p>
+          {{else}}
+          <p class="empty">Tracing is configured, but no active server span was available for this request. The route may be excluded or tracing middleware may not have run.</p>
+          {{end}}
+          {{else if eq .Runtime.Tracing.State "init_failed"}}
+          <p class="warning">Tracing was enabled but could not initialize. Request handling and Kubernetes probes continue without an exporter.</p>
+          {{else}}
+          <p class="empty">Tracing is disabled. Set <code>SIMPLEAPP_TRACING_ENABLED=true</code> and configure an OTLP/gRPC endpoint to enable it.</p>
           {{end}}
         </div>
 

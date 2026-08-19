@@ -15,6 +15,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -173,6 +176,18 @@ func PortCheckEndpoint(w http.ResponseWriter, r *http.Request) {
 	startedAt := time.Now().UTC()
 	ctx, cancel := context.WithTimeout(r.Context(), portCheckOverallTimeout)
 	defer cancel()
+	tracerProvider := oteltrace.SpanFromContext(ctx).TracerProvider()
+	ctx, scanSpan := tracerProvider.Tracer("github.com/jhoelzel/simpleapp/portcheck").Start(
+		ctx,
+		"portcheck.scan",
+		oteltrace.WithAttributes(
+			attribute.Bool("portcheck.all_ports", allPorts),
+			attribute.Int("portcheck.port_count", len(ports)),
+			attribute.Int("portcheck.protocol_count", len(protocols)),
+			attribute.Int("portcheck.per_port_timeout_ms", int(perPortTimeout/time.Millisecond)),
+		),
+	)
+	defer scanSpan.End()
 
 	policy, err := loadTargetPolicy()
 	if err != nil {
@@ -223,6 +238,18 @@ func PortCheckEndpoint(w http.ResponseWriter, r *http.Request) {
 		Cancelled:    ctx.Err() != nil,
 		Results:      summary.results,
 	}
+	scanSpan.SetAttributes(
+		attribute.Int("portcheck.completed", response.Completed),
+		attribute.Bool("portcheck.partial", response.Partial),
+		attribute.Bool("portcheck.cancelled", response.Cancelled),
+		attribute.Int("portcheck.result.open", response.StatusCounts["open"]),
+		attribute.Int("portcheck.result.responded", response.StatusCounts["responded"]),
+		attribute.Int("portcheck.result.closed", response.StatusCounts["closed"]),
+		attribute.Int("portcheck.result.timeout", response.StatusCounts["timeout"]),
+		attribute.Int("portcheck.result.unknown", response.StatusCounts["unknown"]),
+		attribute.Int("portcheck.result.error", response.StatusCounts["error"]),
+		attribute.Int("portcheck.result.unreachable", response.StatusCounts["unreachable"]),
+	)
 
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(response)

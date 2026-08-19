@@ -5,7 +5,7 @@ metadata:
   labels:
     app: simpleapp
     app.kubernetes.io/name: simpleapp
-    app.kubernetes.io/version: "0.0.4"
+    app.kubernetes.io/version: "0.0.5"
 spec:
   type: NodePort
   selector:

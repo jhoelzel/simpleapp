@@ -1,6 +1,6 @@
 # simpleapp
 
-`simpleapp` is a small Kubernetes request and network diagnostics application for workshops, troubleshooting, and load-balancer demonstrations. Its home page shows the request that actually reached the pod, the pod/runtime serving it, and a bounded port checker that runs from the pod's network namespace.
+`simpleapp` is a small Kubernetes request and network diagnostics application for workshops, troubleshooting, and load-balancer demonstrations. Its home page shows the request that actually reached the pod, the pod/runtime serving it, a bounded port checker that runs from the pod's network namespace, and optional OpenTelemetry trace correlation.
 
 The container remains deliberately small and has no Kubernetes API dependency or RBAC requirement.
 
@@ -23,7 +23,7 @@ docker run --rm --name simpleapp \
   -p 5060:5060/tcp \
   -p 5060:5060/udp \
   -p 5061:5061/tcp \
-  ghcr.io/jhoelzel/webrequesttest:0.0.4
+  ghcr.io/jhoelzel/webrequesttest:0.0.5
 ```
 
 ## What the dashboard shows
@@ -35,6 +35,7 @@ The request section includes:
 - all multi-value request headers, query parameters, trailers, transfer encoding, and a bounded body preview;
 - TLS version, cipher, SNI, negotiated protocol, and client-certificate counts when TLS reaches the pod;
 - highlighted `Forwarded`, `X-Forwarded-*`, `X-Real-IP`, Cloudflare, Envoy, request-ID, and trace-related headers;
+- the active OpenTelemetry trace ID, server span ID, sampling state, and safe exporter status when tracing is enabled;
 - a reconstructed request and a JSON representation for scripts.
 
 The runtime section includes:
@@ -110,6 +111,29 @@ env:
 
 An explicit hostname is resolved once and the validated IP literal is used for the scan. `PORT_CHECK_ALLOWED_TARGETS=*` permits everything, but should only be used in an isolated workshop cluster with an appropriate NetworkPolicy.
 
+## Optional OTLP tracing
+
+Tracing is disabled by default and creates no exporter or background workers. Enable the application gate and configure the standard OpenTelemetry OTLP variables to export route-aware HTTP server spans over gRPC:
+
+```bash
+SIMPLEAPP_TRACING_ENABLED=true \
+OTEL_SERVICE_NAME=webrequesttest \
+OTEL_TRACES_EXPORTER=otlp \
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://grafana-tempo.monitoring.svc.cluster.local:4317 \
+OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc \
+OTEL_EXPORTER_OTLP_TRACES_INSECURE=true \
+OTEL_TRACES_SAMPLER=parentbased_always_on \
+go run ./cmd/simpleapp.go
+```
+
+The middleware uses Gorilla route templates such as `GET /api/request`, extracts W3C Trace Context and Baggage, correlates access logs with trace/span IDs, and excludes Kubernetes health/readiness probes. A port-check request creates one aggregate child span, never one span per probed port.
+
+`SIMPLEAPP_TRACE_PUBLIC_ENDPOINT` defaults to `true`: a client-provided trace context is linked instead of becoming the parent, which prevents an untrusted Internet client from controlling the server trace and sampling decision. Set it to `false` only when the application is reachable exclusively through a trusted proxy that sanitizes incoming trace headers; this preserves an end-to-end parent/child trace from that proxy.
+
+The diagnostics state `configured` means the asynchronous exporter initialized. It does not claim that the collector is reachable or accepting spans. TLS is the default for OTLP; use insecure transport only for a trusted in-cluster collector. Exporter headers and client key/certificate settings can be supplied with the standard `OTEL_EXPORTER_OTLP_TRACES_*` variables, but credentials must come from Kubernetes Secrets and are never rendered by the dashboard or API. Do not place secrets in `OTEL_RESOURCE_ATTRIBUTES`.
+
+The OTLP endpoint must be an absolute `http://` or `https://` URL with a host; credentials, query strings, and fragments are rejected. `OTEL_SDK_DISABLED=true` or `OTEL_TRACES_EXPORTER=none` disables tracing even when the application gate is enabled. Malformed exporter settings fail open as the safe categorical state `init_failed` and are never copied into logs or diagnostic responses. The application validates both general and trace-specific exporter variables—even an overridden lower-precedence value—so stale malformed settings must be removed. Configured CA or client credentials take precedence over insecure transport and are reported as TLS.
+
 ## Kubernetes deployment
 
 The checked-in Kustomize overlays create their namespaces:
@@ -125,7 +149,7 @@ kubectl apply -k kube-manifests/kustomize/overlays/prod
 Or generate release manifests for a chosen version and image repository:
 
 ```bash
-make kube-manifests VERSION=0.0.4
+make kube-manifests VERSION=0.0.5
 make kube-apply-lb NS=default
 # or: make kube-apply-nodeport NS=default
 ```
@@ -168,6 +192,15 @@ The HTTP, TCP, and UDP listeners share signal-driven shutdown. Delete a pod whil
 | `DIAGNOSTIC_REDACT_NAMES` | empty | Additional comma-separated header or query names whose values must be redacted |
 | `PORT_CHECK_ALLOWED_TARGETS` | local/self only | Comma-separated hostnames, IPs, CIDRs, or `*` |
 | `SHOW_SENSITIVE_DATA` | `false` | Shows credential-like header/query values; unsafe on shared or public demos |
+| `SIMPLEAPP_TRACING_ENABLED` | `false` | Initializes the optional OTLP/gRPC trace pipeline when `true`; requires an OTLP endpoint |
+| `SIMPLEAPP_TRACE_PUBLIC_ENDPOINT` | `true` | Links untrusted incoming trace context; set `false` only behind a trace-header-sanitizing trusted proxy |
+| `OTEL_SERVICE_NAME` | `simpleapp` | OpenTelemetry `service.name` resource attribute |
+| `OTEL_TRACES_EXPORTER` | `otlp` when enabled | Must be `otlp`; no metrics or log SDK is initialized |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | required when enabled | OTLP gRPC collector; falls back to `OTEL_EXPORTER_OTLP_ENDPOINT` |
+| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | `grpc` | Only `grpc` is supported; the general protocol variable is a fallback |
+| `OTEL_EXPORTER_OTLP_TRACES_INSECURE` | `false` | Disables transport security; use only for a trusted in-cluster collector |
+| `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | `parentbased_always_on` | Standard SDK sampler configuration; ratio values are validated from 0 through 1 |
+| `OTEL_RESOURCE_ATTRIBUTES` | empty | Additional OpenTelemetry resource attributes; never include secrets |
 | `POD_NAME`, `POD_NAMESPACE`, `POD_UID`, `POD_IP`, `HOST_IP`, `NODE_NAME`, `SERVICE_ACCOUNT` | empty locally | Allowlisted Downward API identity fields |
 | `CPU_REQUEST_MILLICORES`, `CPU_LIMIT_MILLICORES` | empty locally | Resource values injected by the manifest |
 | `MEMORY_REQUEST_BYTES`, `MEMORY_LIMIT_BYTES` | empty locally | Resource values injected by the manifest |
@@ -175,6 +208,8 @@ The HTTP, TCP, and UDP listeners share signal-driven shutdown. Delete a pod whil
 `SHOW_SENSITIVE_DATA=true` is intentionally noisy in the process log. Do not enable it when an ingress injects internal authorization headers or when the dashboard is being recorded.
 
 ## Development and verification
+
+Development and container builds use Go 1.25 or newer.
 
 ```bash
 make fmt

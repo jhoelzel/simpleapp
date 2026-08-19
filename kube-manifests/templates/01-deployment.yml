@@ -50,6 +50,8 @@ spec:
           containerPort: 5061
           protocol: TCP
         env:
+        - name: SIMPLEAPP_TRACING_ENABLED
+          value: "false"
         - name: BUILD_IMAGE
           value: "{{.IMAGE_REPOSITORY}}:{{.VERSION}}"
         - name: CONTAINER_NAME
